@@ -1,0 +1,165 @@
+#nmt-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2147483000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #1f2328;
+  color: #f0f3f6;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Malgun Gothic", sans-serif;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+}
+
+#nmt-panel button {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: #2f81f7;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+#nmt-panel button:disabled {
+  background: #4b5563;
+  cursor: default;
+}
+
+#nmt-panel button.nmt-sub {
+  background: transparent;
+  color: #9aa4af;
+  padding: 6px 6px;
+  text-decoration: underline;
+}
+
+#nmt-status {
+  min-width: 170px;
+  color: #c9d1d9;
+  white-space: nowrap;
+}
+
+#nmt-status.nmt-link {
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  color: #fff;
+}
+
+#nmt-status.nmt-link:hover {
+  color: #7fb3ff;
+}
+
+/* 접어서 확인 대상만 볼 때 감춰지는 행 */
+[data-nmt-hidden] {
+  display: none !important;
+}
+
+/*
+ * 행 표시. 배경을 덮지 않고 왼쪽 띠만 쓴다.
+ *
+ * 클래스가 아니라 상태 속성에 건다. 메일 서비스가 행을 다시 그릴 때 className 을 통째로
+ * 덮어쓰면 클래스만 사라지고 data 속성은 남는데, 클래스로 스타일을 걸어 두면 그때 띠와
+ * 흐림이 조용히 사라진다.
+ */
+[data-nmt-state='act'] {
+  box-shadow: inset 4px 0 0 #f85149 !important;
+}
+
+[data-nmt-state='low'] {
+  opacity: 0.55;
+}
+
+/* 목록에서 내려간 행. 띠를 걷고 흐리게만 둔다 */
+[data-nmt-state='done'] {
+  opacity: 0.45;
+}
+
+.nmt-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  color: #374151;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.nmt-badge[data-kind="reply"] {
+  background: #ffe0e0;
+  color: #b42318;
+}
+
+.nmt-badge[data-kind="approval"] {
+  background: #fde9cc;
+  color: #93500a;
+}
+
+.nmt-badge[data-kind="task"] {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+.nmt-badge[data-kind="schedule"] {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.nmt-badge[data-kind="sent"],
+.nmt-badge[data-kind="vendor"],
+.nmt-badge[data-kind="system"] {
+  background: #eef0f2;
+  color: #6b7280;
+}
+
+/* 목록에서 내려간 상태. 끝났다는 뜻이 아니므로 완료를 뜻하는 색을 쓰지 않는다 */
+.nmt-badge[data-kind="done"] {
+  background: #e5e7eb;
+  color: #6b7280;
+}
+
+/*
+ * 강조되지 않은 행의 배지.
+ *
+ * 배지는 메일의 종류이고 띠는 그 메일이 내 행동을 기다리는가다. 서로 다른 질문이라
+ * "답장 필요"인데 띠가 없는 경우가 나온다. 같은 색으로 두면 왜 하나만 강조되는지
+ * 화면에서 알 수 없다. 규칙 순서상 유형별 색보다 뒤에 있어야 이긴다
+ */
+/* 사용자가 직접 정한 것. 모델 판정이 아니라 규칙이므로 색을 따로 준다 */
+.nmt-badge[data-kind="pinned"] {
+  background: #1f2328;
+  color: #fff;
+}
+
+.nmt-badge[data-kind="muted"] {
+  background: #eef0f2;
+  color: #9aa4af;
+}
+
+[data-nmt-state='low'] .nmt-badge,
+[data-nmt-state='done'] .nmt-badge {
+  background: #eef0f2;
+  color: #9aa4af;
+}
+
+/* 누를 수 있는 배지. 행 클릭은 메일 열기라 눌러도 되는 곳임을 보여 줘야 한다 */
+.nmt-badge.nmt-clickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.nmt-badge.nmt-clickable:hover {
+  outline: 1px solid currentColor;
+  outline-offset: 1px;
+}
+
+.nmt-badge.nmt-clickable:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 1px;
+}

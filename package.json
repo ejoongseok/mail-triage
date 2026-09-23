@@ -1,0 +1,12 @@
+{
+  "name": "mail-triage",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome extension that marks which messages in your inbox need your reply",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test \"test/unit/*.test.mjs\"",
+    "check": "python tools/check.py",
+    "scenario": "python tools/scenario.py"
+  }
+}

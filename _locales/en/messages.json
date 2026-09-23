@@ -1,0 +1,370 @@
+{
+  "extName": {
+    "message": "Mail Triage - keep only what needs a reply"
+  },
+  "extDesc": {
+    "message": "Highlights only the emails that need your action. Ads and automated mail are dimmed. Works with Gmail, Naver Mail and NAVER WORKS."
+  },
+  "actionTitle": {
+    "message": "Mail Triage settings"
+  },
+  "btnRun": {
+    "message": "Sort inbox"
+  },
+  "btnOptions": {
+    "message": "Settings"
+  },
+  "statusReady": {
+    "message": "Ready"
+  },
+  "needSetup": {
+    "message": "$MISSING$ required. Opening settings.",
+    "placeholders": {
+      "missing": {
+        "content": "$1"
+      }
+    }
+  },
+  "needPersona": {
+    "message": "your role"
+  },
+  "noRows": {
+    "message": "Could not find the message list. Set a row selector in settings."
+  },
+  "nothingToJudge": {
+    "message": "No messages to sort."
+  },
+  "contextDead": {
+    "message": "The extension was updated. Please reload the page (F5)."
+  },
+  "progress": {
+    "message": "$PCT$%",
+    "placeholders": {
+      "pct": {
+        "content": "$1"
+      }
+    }
+  },
+  "errKeyRejected": {
+    "message": "The API key was rejected. Check it in settings."
+  },
+  "errRateLimit": {
+    "message": "Rate limit reached. Try again shortly."
+  },
+  "errNoAction": {
+    "message": "The response has no action field. See the console for its structure."
+  },
+  "kindReply": {
+    "message": "Reply"
+  },
+  "kindTask": {
+    "message": "To do"
+  },
+  "kindApproval": {
+    "message": "Approve"
+  },
+  "kindSchedule": {
+    "message": "Schedule"
+  },
+  "kindFyi": {
+    "message": "FYI"
+  },
+  "kindVendor": {
+    "message": "Sales"
+  },
+  "kindSystem": {
+    "message": "Automated"
+  },
+  "kindSent": {
+    "message": "Sent by me"
+  },
+  "kindOther": {
+    "message": "Other"
+  },
+  "badgeDeadline": {
+    "message": "due"
+  },
+  "badgeTip": {
+    "message": "Needs action $ACTION$% / type confidence $CONF$%",
+    "placeholders": {
+      "action": {
+        "content": "$1"
+      },
+      "conf": {
+        "content": "$2"
+      }
+    }
+  },
+  "optTitle": {
+    "message": "Mail Triage settings"
+  },
+  "optLead": {
+    "message": "Fill in the role line and you are ready. Everything else works on defaults."
+  },
+  "optRole": {
+    "message": "Your role and current focus"
+  },
+  "optRoleHint": {
+    "message": "Pick a job and the sentence fills in. Edit it freely. This sentence changes accuracy more than anything else."
+  },
+  "optRolePick": {
+    "message": "Choose a job"
+  },
+  "optRolePlaceholder": {
+    "message": "Pick a job above or write your own."
+  },
+  "optRoleTip": {
+    "message": "The more specific the better. This line is sent with every judgement and decides whether a message needs action from you. For senders you want handled with certainty, use the lists below instead."
+  },
+  "optStrength": {
+    "message": "Which bothers you more?"
+  },
+  "optStrengthLoose": {
+    "message": "Missing an important email"
+  },
+  "optStrengthLooseHint": {
+    "message": "Highlights borderline cases too. More false alarms."
+  },
+  "optStrengthBalanced": {
+    "message": "About the same"
+  },
+  "optStrengthBalancedHint": {
+    "message": "Recommended. You can change it after a few weeks."
+  },
+  "optStrengthTight": {
+    "message": "Unimportant mail being highlighted"
+  },
+  "optStrengthTightHint": {
+    "message": "Highlights only clear cases. You may miss some."
+  },
+  "optUnreadOnly": {
+    "message": "Sort unread messages only"
+  },
+  "optPrivacy": {
+    "message": "Subjects and senders are sent to the classification service when you sort. Bodies and attachments are never sent. You can verify this in the source."
+  },
+  "optSave": {
+    "message": "Save"
+  },
+  "optSaved": {
+    "message": "Saved. Open your inbox and press Sort inbox."
+  },
+  "optSavedIncomplete": {
+    "message": "Saved, but $MISSING$ is empty so sorting will not run.",
+    "placeholders": {
+      "missing": {
+        "content": "$1"
+      }
+    }
+  },
+  "optTrouble": {
+    "message": "Something not working?"
+  },
+  "optTroubleMe": {
+    "message": "My own sent mail is not recognised"
+  },
+  "optTroubleMeHint": {
+    "message": "Normally detected from the page. Fill this in only if detection fails. Separate name and address with a comma."
+  },
+  "optDetected": {
+    "message": "detected: $NAME$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "optTroubleCache": {
+    "message": "I want everything judged again"
+  },
+  "optTroubleCacheHint": {
+    "message": "Results are cached so repeats cost nothing. Clear it to force a fresh judgement."
+  },
+  "optClearCache": {
+    "message": "Clear cache"
+  },
+  "optCacheCount": {
+    "message": "$N$ judgements stored",
+    "placeholders": {
+      "n": {
+        "content": "$1"
+      }
+    }
+  },
+  "optPrivacyWork": {
+    "message": "If this is a work account, check your organisation's policy first."
+  },
+  "optMePlaceholder": {
+    "message": "John Doe, john@example.com"
+  },
+  "btnClear": {
+    "message": "Clear marks"
+  },
+  "marksCleared": {
+    "message": "Marks cleared."
+  },
+  "doneActionable": {
+    "message": "$N$ need your attention",
+    "placeholders": {
+      "n": {
+        "content": "$1"
+      }
+    }
+  },
+  "doneNone": {
+    "message": "Nothing needs your attention"
+  },
+  "donePartial": {
+    "message": "Checked $DONE$ so far",
+    "placeholders": {
+      "done": {
+        "content": "$1"
+      }
+    }
+  },
+  "filterHint": {
+    "message": "Click to show only what needs attention"
+  },
+  "badgeDoneTip": {
+    "message": "Click to take this off the list"
+  },
+  "badgeUndoTip": {
+    "message": "Click to put this back on the list"
+  },
+  "optTroubleDone": {
+    "message": "Clear handled marks"
+  },
+  "optTroubleDoneHint": {
+    "message": "Messages you marked as handled will be highlighted again. Use this if you clicked by mistake."
+  },
+  "optClearDone": {
+    "message": "Clear"
+  },
+  "optDoneCount": {
+    "message": "$N$ saved",
+    "placeholders": {
+      "n": {
+        "content": "$1"
+      }
+    }
+  },
+  "undoneRerun": {
+    "message": "Restored. Press Sort inbox to re-check it."
+  },
+  "filterOn": {
+    "message": "Showing $N$, show all",
+    "placeholders": {
+      "n": {
+        "content": "$1"
+      }
+    }
+  },
+  "filterOnNone": {
+    "message": "All handled, show all"
+  },
+  "marksGone": {
+    "message": "The list changed. Press Sort inbox again."
+  },
+  "badgeRead": {
+    "message": "read"
+  },
+  "badgeRaw": {
+    "message": " / classified as $KIND$",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      }
+    }
+  },
+  "pendingRows": {
+    "message": "$N$ not sorted yet",
+    "placeholders": {
+      "n": {
+        "content": "$1"
+      }
+    }
+  },
+  "kindPinned": {
+    "message": "Always"
+  },
+  "kindMuted": {
+    "message": "Muted"
+  },
+  "optAlwaysShow": {
+    "message": "Always show"
+  },
+  "optAlwaysShowHint": {
+    "message": "Senders or subjects listed here are highlighted even when automated. One per line, a fragment is enough."
+  },
+  "optAlwaysMute": {
+    "message": "Always ignore"
+  },
+  "optAlwaysMuteHint": {
+    "message": "Senders or subjects listed here are skipped without being judged. No calls are made."
+  },
+  "optSenderPlaceholder": {
+    "message": "ceo@example.com\n@partner.com\nwebinar"
+  },
+  "optBothLists": {
+    "message": "Saved. $LINES$ is in both lists, so it is always shown.",
+    "placeholders": {
+      "lines": {
+        "content": "$1"
+      }
+    }
+  },
+  "errNeedKey": {
+    "message": "No trial is available. Add your API key in settings."
+  },
+  "errRelayQuota": {
+    "message": "This browser has used up its trial for today. Add your own key in settings to continue."
+  },
+  "errRelayDenied": {
+    "message": "The free trial is not available in this region. Add your own key in settings."
+  },
+  "errRelayPool": {
+    "message": "The shared trial pool for today is used up. Add your own key in settings to continue."
+  },
+  "optSource": {
+    "message": "How to classify"
+  },
+  "optSourceHint": {
+    "message": "Pick one. You can change this at any time."
+  },
+  "optSourceTrial": {
+    "message": "Use the free trial"
+  },
+  "optSourceTrialHint": {
+    "message": "The developer covers it with their own key. No sign-up needed, with a daily limit. Currently available in Korea only."
+  },
+  "optSourceOwn": {
+    "message": "Use my own API key"
+  },
+  "optSourceOwnHint": {
+    "message": "Sign up at console.typesafe.ai and create a key. It is stored on this device only and is never sent anywhere else."
+  },
+  "optModeNoRelay": {
+    "message": "This build has no trial relay configured, so it runs with your own key only."
+  },
+  "needKey": {
+    "message": "API key"
+  },
+  "errRelayClosed": {
+    "message": "The free trial is closed for now. Add your own key in settings to continue."
+  },
+  "errOwnKeyMissing": {
+    "message": "You chose your own API key, but none is saved. Add it in settings or switch to the free trial."
+  },
+  "errStorage": {
+    "message": "Could not read your settings, so nothing was sent. Reload the page and try again."
+  },
+  "errRelayNew": {
+    "message": "New free trials are closed for today. Try again tomorrow, or add your own key in settings to continue now."
+  },
+  "errRelayBurst": {
+    "message": "Too many requests at once. Please try again in about a minute."
+  },
+  "errRelayVersion": {
+    "message": "The free trial relay does not accept this version of the extension yet. Try again later, or add your own key in settings."
+  }
+}

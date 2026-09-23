@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title data-i18n="optTitle"></title>
+<style>
+  body {
+    max-width: 620px;
+    margin: 44px auto 90px;
+    padding: 0 20px;
+    font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Malgun Gothic", "Segoe UI", sans-serif;
+    color: #1f2328;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .lead { color: #6b7280; margin: 0 0 28px; }
+
+  .step { margin: 26px 0; }
+  .no {
+    display: inline-flex; width: 22px; height: 22px;
+    align-items: center; justify-content: center;
+    border-radius: 50%; background: #1f2328; color: #fff;
+    font-size: 12px; font-weight: 700; margin-right: 7px;
+  }
+  label.main { display: block; font-weight: 600; font-size: 15px; }
+  .hint { display: block; font-weight: 400; color: #6b7280; font-size: 13px; margin-top: 3px; }
+
+  input[type="text"], input[type="password"], textarea, select {
+    width: 100%; padding: 9px; margin-top: 8px;
+    border: 1px solid #d0d7de; border-radius: 6px; font-size: 13px;
+    font-family: inherit; box-sizing: border-box; background: #fff;
+  }
+  textarea { min-height: 74px; resize: vertical; }
+
+  .choices { margin-top: 10px; }
+  .choice {
+    display: block; border: 1px solid #d0d7de; border-radius: 8px;
+    padding: 10px 12px; margin-bottom: 8px; cursor: pointer;
+  }
+  .choice:hover { background: #f6f8fa; }
+  .choice input { margin-right: 8px; }
+  .choice.on { border-color: #1f2328; background: #f6f8fa; }
+  .choice .sub { display: block; color: #6b7280; font-size: 12.5px; margin: 2px 0 0 24px; }
+
+  details { margin-top: 30px; border-top: 1px solid #e5e7eb; padding-top: 6px; }
+  summary { cursor: pointer; padding: 10px 0; font-weight: 600; color: #6b7280; font-size: 13px; }
+  details .block { margin: 6px 0 18px; }
+  details label { display: block; font-weight: 600; font-size: 13.5px; }
+
+  .note { color: #6b7280; font-size: 12.5px; margin-top: 30px; line-height: 1.7; }
+
+  /* 지금 어느 경로로 도는지. 키를 넣고 빼는 순간 바뀐다 */
+  .mode {
+    margin: 10px 0 0; padding: 10px 12px; border-radius: 8px;
+    font-size: 12.5px; line-height: 1.65;
+  }
+  .mode:empty { display: none; }
+  .mode.trial { background: #fdf4e3; color: #7a5300; }
+  .mode.need  { background: #fdeceb; color: #a3271c; }
+
+  /* 고를 수 없는 방식. 중계 주소가 설정되지 않은 빌드에서 체험이 여기 해당한다 */
+  .choice.off { opacity: 0.5; cursor: default; }
+  .choice.off:hover { background: transparent; }
+
+  #keyBox { display: none; }
+  #keyBox.on { display: block; }
+
+  .bar {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    background: rgba(255,255,255,0.96); border-top: 1px solid #d0d7de;
+    padding: 12px 0; text-align: center; backdrop-filter: blur(4px);
+  }
+
+  /* 툴바 아이콘으로 연 팝업. 채울 것이 둘뿐이라 탭을 새로 열 이유가 없다 */
+  body.popup {
+    width: 360px; max-width: none;
+    margin: 18px auto 64px; padding: 0 18px;
+  }
+  body.popup h1 { font-size: 17px; }
+  body.popup .lead { margin-bottom: 20px; font-size: 13px; }
+  body.popup .step { margin: 18px 0; }
+  body.popup .note { font-size: 12px; margin-top: 20px; }
+  body.popup textarea { min-height: 88px; }
+  button {
+    padding: 9px 24px; border: 0; border-radius: 6px;
+    background: #1f2328; color: #fff; font-size: 14px; cursor: pointer;
+  }
+  button.ghost { background: #eef0f2; color: #374151; padding: 6px 12px; font-size: 13px; }
+  #saved { margin-left: 10px; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<h1 data-i18n="optTitle"></h1>
+<p class="lead" data-i18n="optLead"></p>
+
+<div class="step">
+  <label class="main" for="jobSelect"><span class="no">1</span><span data-i18n="optRole"></span>
+    <span class="hint" data-i18n="optRoleHint"></span>
+  </label>
+  <select id="jobSelect"><option value="" data-i18n="optRolePick"></option></select>
+  <textarea id="persona" maxlength="400" data-i18n-placeholder="optRolePlaceholder"></textarea>
+  <span class="hint" data-i18n="optRoleTip"></span>
+</div>
+
+<div class="step">
+  <label class="main"><span class="no">2</span><span data-i18n="optSource"></span>
+    <span class="hint" data-i18n="optSourceHint"></span>
+  </label>
+  <div class="choices">
+    <label class="choice" id="sourceTrialRow">
+      <input type="radio" name="source" value="trial"><span data-i18n="optSourceTrial"></span>
+      <span class="sub" data-i18n="optSourceTrialHint"></span>
+    </label>
+    <label class="choice">
+      <input type="radio" name="source" value="own"><span data-i18n="optSourceOwn"></span>
+      <span class="sub" data-i18n="optSourceOwnHint"></span>
+    </label>
+  </div>
+
+  <div id="keyBox">
+    <input type="password" id="apiKey" placeholder="apikey_...">
+  </div>
+
+  <p class="mode" id="modeNote"></p>
+</div>
+
+<div class="step">
+  <label class="main"><span class="no">3</span><span data-i18n="optStrength"></span></label>
+  <div class="choices" id="strength">
+    <label class="choice">
+      <input type="radio" name="strength" value="0.5"><span data-i18n="optStrengthLoose"></span>
+      <span class="sub" data-i18n="optStrengthLooseHint"></span>
+    </label>
+    <label class="choice">
+      <input type="radio" name="strength" value="0.7"><span data-i18n="optStrengthBalanced"></span>
+      <span class="sub" data-i18n="optStrengthBalancedHint"></span>
+    </label>
+    <label class="choice">
+      <input type="radio" name="strength" value="0.85"><span data-i18n="optStrengthTight"></span>
+      <span class="sub" data-i18n="optStrengthTightHint"></span>
+    </label>
+  </div>
+  <label style="margin-top:10px;display:block;font-weight:400">
+    <input type="checkbox" id="unreadOnly" style="width:auto;margin-right:6px">
+    <span data-i18n="optUnreadOnly"></span>
+  </label>
+</div>
+
+<div class="step">
+  <label class="main" for="alwaysShow"><span class="no">4</span><span data-i18n="optAlwaysShow"></span>
+    <span class="hint" data-i18n="optAlwaysShowHint"></span>
+  </label>
+  <textarea id="alwaysShow" data-i18n-placeholder="optSenderPlaceholder"></textarea>
+
+  <label class="main" for="alwaysMute" style="margin-top:18px"><span class="no">5</span><span data-i18n="optAlwaysMute"></span>
+    <span class="hint" data-i18n="optAlwaysMuteHint"></span>
+  </label>
+  <textarea id="alwaysMute" data-i18n-placeholder="optSenderPlaceholder"></textarea>
+</div>
+
+<details>
+  <summary data-i18n="optTrouble"></summary>
+
+  <div class="block">
+    <label for="myIdentity" data-i18n="optTroubleMe"></label>
+    <span class="hint" data-i18n="optTroubleMeHint"></span>
+    <input type="text" id="myIdentity" maxlength="120" data-i18n-placeholder="optMePlaceholder">
+    <span class="hint" id="detectedNote"></span>
+  </div>
+
+  <div class="block">
+    <label data-i18n="optTroubleCache"></label>
+    <span class="hint" data-i18n="optTroubleCacheHint"></span>
+    <p style="margin-top:8px">
+      <button class="ghost" id="clearCache" type="button" data-i18n="optClearCache"></button>
+      <span class="hint" id="cacheInfo" style="display:inline;margin-left:6px"></span>
+    </p>
+  </div>
+
+  <div class="block">
+    <label data-i18n="optTroubleDone"></label>
+    <span class="hint" data-i18n="optTroubleDoneHint"></span>
+    <p style="margin-top:8px">
+      <button class="ghost" id="clearDone" type="button" data-i18n="optClearDone"></button>
+      <span class="hint" id="doneInfo" style="display:inline;margin-left:6px"></span>
+    </p>
+  </div>
+</details>
+
+<p class="note">
+  <span data-i18n="optPrivacy"></span><br>
+  <span data-i18n="optPrivacyWork"></span>
+</p>
+
+<div class="bar">
+  <button id="save" type="button" data-i18n="optSave"></button><span id="saved"></span>
+</div>
+
+<script src="config.js"></script>
+<script src="i18n.js"></script>
+<script src="jobs.js"></script>
+<script src="cache.js"></script>
+<script src="options.js"></script>
+</body>
+</html>

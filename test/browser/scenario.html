@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>시나리오 시험</title>
+<link rel="stylesheet" href="../../src/content.css">
+<style>
+  body { margin: 0; font: 14px/1.5 "Malgun Gothic", sans-serif; }
+  table { width: 100%; border-collapse: collapse; }
+  tr.zA { height: 36px; border-bottom: 1px solid #eee; cursor: pointer; }
+  #result { white-space: pre-wrap; font: 12px/1.5 monospace; padding: 12px; border-top: 2px solid #333; }
+</style>
+</head>
+<body>
+
+<header><div aria-label="Google 계정: 나 (me@company.example.com)">나</div></header>
+
+<div class="toolbar">
+  <span id="range"></span>
+  <button id="prev" type="button" aria-label="이전 페이지">이전</button>
+  <button id="next" type="button" aria-label="다음 페이지">다음</button>
+</div>
+
+<div id="list">
+  <table><tbody id="rows"></tbody></table>
+</div>
+
+<div id="detail" hidden>
+  <button id="back" type="button" aria-label="목록으로">목록</button>
+  <h2 id="detail-subject"></h2>
+</div>
+
+<pre id="result">running</pre>
+
+<script src="chrome-stub.js"></script>
+<script src="../fixtures/inbox.js"></script>
+<script>nmtFixture.start({ openMode: 'remove' });</script>
+<script src="../../src/i18n.js"></script>
+<script src="../../src/selectors.js"></script>
+<script src="../../src/cache.js"></script>
+<script src="../../src/jev.js"></script>
+<script src="../../src/content.js"></script>
+<script src="scenarios.js"></script>
+</body>
+</html>
