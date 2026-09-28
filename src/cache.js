@@ -11,7 +11,7 @@ const NMT_CACHE_MAX = 5000;
 /**
  * 질문 설계가 바뀌면 옛 판정이 무효다. 코드를 고칠 때 이 값을 올린다.
  */
-const NMT_SCHEMA_VERSION = 3;
+const NMT_SCHEMA_VERSION = 4;
 
 let nmtMem = null;
 

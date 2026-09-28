@@ -249,6 +249,27 @@
   }
 
   {
+    const s = scenario('설정 버튼과 역할 없는 분류는 설정 화면을 background 에 부탁한다');
+    await fresh();
+    const dead = nmtMsg('contextDead');
+    const asked = NMT_TEST.optionsRequests;
+    document.getElementById('nmt-opts').click();
+    await new Promise((r) => setTimeout(r, 50));
+    s.check('설정 버튼이 부탁한다', NMT_TEST.optionsRequests === asked + 1, NMT_TEST.optionsRequests - asked);
+
+    const persona = NMT_TEST.sync.persona;
+    await chrome.storage.sync.set({ persona: '' });
+    document.getElementById('nmt-run').click();
+    await new Promise((r) => setTimeout(r, 200));
+    await chrome.storage.sync.set({ persona });
+    s.check('역할 없이 분류하면 부탁한다', NMT_TEST.optionsRequests === asked + 2, NMT_TEST.optionsRequests - asked);
+    s.check('죽은 컨텍스트 안내가 뜨지 않는다', !document.getElementById('nmt-panel').innerText.includes(dead));
+    s.check('판정을 부르지 않는다', NMT_TEST.calls === 0, NMT_TEST.calls);
+    s.same();
+    s.done();
+  }
+
+  {
     const s = scenario('설정에서 기록을 비우면 열린 화면도 따른다');
     await fresh();
     await classify();

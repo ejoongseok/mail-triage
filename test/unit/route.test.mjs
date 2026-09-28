@@ -20,6 +20,8 @@ import { ROOT, loadExtension } from '../harness.mjs';
  */
 function loadBackground({ local = {}, failWhen = () => false, status = 200, reply = { answers: {} } } = {}) {
   const calls = [];
+  const listeners = [];
+  const opened = [];
   const storage = {
     local: {
       async get(query) {
@@ -52,15 +54,17 @@ function loadBackground({ local = {}, failWhen = () => false, status = 200, repl
       runtime: {
         id: 'self',
         onInstalled: { addListener() {} },
-        onMessage: { addListener() {} },
-        openOptionsPage() {},
+        onMessage: { addListener: (fn) => listeners.push(fn) },
+        async openOptionsPage() {
+          opened.push(true);
+        },
       },
       storage,
     },
   });
   ctx.importScripts = (path) => vm.runInContext(readFileSync(join(ROOT, path), 'utf8'), ctx);
   vm.runInContext(readFileSync(join(ROOT, 'src/background.js'), 'utf8'), ctx, { filename: 'background.js' });
-  return { ctx, calls };
+  return { ctx, calls, listeners, opened };
 }
 
 /** 판정 하나를 돌리고, background 로 보낸 본문과 판정 결과를 돌려준다 */
@@ -170,6 +174,36 @@ describe('상태 문장은 중계가 받는 길이를 넘지 않는다', () => {
   });
 });
 
+describe('회신 메일', () => {
+  // 회신 제목은 원래 메일의 요청을 달고 온다. 목록에 미리보기가 없으면 모델이 제목의 요청을
+  // 발신자의 것으로 읽으므로, 회신이면 그 사실을 따로 알린다
+  const settings = { persona: '구매 담당자', myIdentity: '' };
+
+  for (const subject of ['RE: 견적 검토 부탁드립니다', 're: 견적', 'Re[2]: 견적', '회신: 견적', '  답장 : 견적']) {
+    it('회신 표시가 있으면 알린다: ' + subject.trim(), async () => {
+      const { body } = await judgeWith(settings, { sender: '김민수', subject });
+      assert.ok(body.state.includes('[회신 여부]'), body.state);
+    });
+  }
+
+  for (const subject of ['견적 검토 부탁드립니다', 'FW: 견적', '[공지] 회의실 안내', 'Reply 기능 소개', '회신 부탁드립니다', '']) {
+    it('회신 표시가 아니면 붙이지 않는다: ' + (subject || '(빈 제목)'), async () => {
+      const { body } = await judgeWith(settings, { sender: '김민수', subject });
+      assert.ok(!body.state.includes('[회신 여부]'), body.state);
+    });
+  }
+
+  it('모든 칸이 아주 길어도 안내 줄과 미리보기 앞부분이 1500자 안에 남는다', async () => {
+    const { body } = await judgeWith(
+      { persona: '가'.repeat(5000), myIdentity: '나'.repeat(500) },
+      { sender: '다'.repeat(3000), email: 'a'.repeat(3000), subject: 'RE: ' + '라'.repeat(900), preview: '마'.repeat(900) }
+    );
+    assert.ok(body.state.length <= 1500, '길이 ' + body.state.length);
+    assert.ok(body.state.endsWith('보지 않는다.'), '안내 줄이 잘렸다');
+    assert.ok(body.state.includes('[미리보기] 마'), '미리보기가 빠졌다');
+  });
+});
+
 describe('응답의 종류는 정해 둔 것만 받는다', () => {
   const cases = [
     ['reply', 'reply'],
@@ -188,4 +222,22 @@ describe('응답의 종류는 정해 둔 것만 받는다', () => {
       assert.equal(out.kind, want);
     });
   }
+});
+describe('설정 화면 열기', () => {
+  // 처리부가 없으면 응답이 오지 않는다. 기다리기 전에 판정하고, 기다림에도 끝을 둔다
+  it('메일 화면의 부탁을 받아 확장 쪽에서 연다', { timeout: 2000 }, async () => {
+    const { listeners, opened } = loadBackground();
+    const reply = await new Promise((resolve) => {
+      const keep = listeners[0]({ type: 'open-options' }, { id: 'self' }, resolve);
+      assert.equal(keep, true, '응답을 기다리게 하지 않았다');
+    });
+    assert.equal(reply.ok, true);
+    assert.equal(opened.length, 1);
+  });
+
+  it('다른 확장이 보낸 부탁은 받지 않는다', () => {
+    const { listeners, opened } = loadBackground();
+    assert.equal(listeners[0]({ type: 'open-options' }, { id: 'other' }, () => {}), false);
+    assert.equal(opened.length, 0);
+  });
 });

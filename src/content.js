@@ -34,10 +34,15 @@ function nmtWarnIfDead() {
   return true;
 }
 
-/** 설정 화면을 연다. 컨텍스트가 죽어 있으면 안내만 한다. */
+/**
+ * 설정 화면을 연다. 컨텍스트가 죽어 있으면 안내만 한다.
+ *
+ * 메일 화면에서 확장 페이지를 직접 열면 Chrome 이 ERR_BLOCKED_BY_CLIENT 로 막는다.
+ * web_accessible_resources 를 두지 않으므로 background 가 확장 쪽에서 연다.
+ */
 function nmtOpenOptions() {
   try {
-    window.open(chrome.runtime.getURL('src/options.html'), '_blank');
+    chrome.runtime.sendMessage({ type: 'open-options' }).catch(() => nmtStatus(nmtMsg('contextDead')));
   } catch (_) {
     nmtStatus(nmtMsg('contextDead'));
   }
@@ -910,6 +915,21 @@ function nmtBadgeKind(kind, needsAction) {
   return 'fyi';
 }
 
+/**
+ * 강조할지와 어떤 배지를 붙일지 정한다.
+ *
+ * 받는 사람 칸에 내가 없고 멘션되지도 않은 메일은 문턱을 넘어도 강조하지 않는다. 참조와
+ * 숨은 참조와 단체 주소로 받은 메일의 요청은 대개 받는 사람 칸의 사람 몫이다. 그 사실을
+ * 판정 입력에 적어 주는 것으로는 확률이 거의 내려가지 않아 규칙으로 가른다. 사용자가 직접
+ * 정한 항상 확인은 이 규칙보다 앞서고, toMe 가 null 이면(표시가 없는 서비스) 가르지 않는다.
+ */
+function nmtDecide(v, threshold, toMe) {
+  const over = v.action >= threshold;
+  const cc = over && v.kind !== 'pinned' && toMe === false;
+  const needsAction = over && !cc;
+  return { needsAction, shown: cc ? 'cc' : nmtBadgeKind(v.kind, needsAction) };
+}
+
 const NMT_LABEL_KEYS = {
   pinned: 'kindPinned',
   muted: 'kindMuted',
@@ -921,6 +941,7 @@ const NMT_LABEL_KEYS = {
   vendor: 'kindVendor',
   system: 'kindSystem',
   sent: 'kindSent',
+  cc: 'kindCc',
   other: 'kindOther',
 };
 
@@ -952,13 +973,9 @@ function nmtMark(row, v, settings, profile, mailKey) {
 
   // 문턱이 결정선이다. 그 아래를 따로 나누어 보여 주면 애매하다는 판단을 사용자에게
   // 떠넘기는 것이 된다. 경계를 옮기고 싶으면 설정의 강조 강도를 쓴다
-  const needsAction = v.action >= settings.threshold;
+  const { needsAction, shown } = nmtDecide(v, settings.threshold, nmtIsToMe(row, profile));
   if (mailKey) row.dataset.nmtKey = mailKey;
   nmtSetRowState(row, needsAction ? 'act' : 'low');
-
-
-
-  const shown = nmtBadgeKind(v.kind, needsAction);
 
   const badge = document.createElement('span');
   badge.className = 'nmt-badge';

@@ -33,6 +33,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // externally_connectable 이 없어 웹페이지는 애초에 보낼 수 없지만, 설정이 바뀌어도
   // 남의 메시지로 키를 쓰게 되지 않도록 발신자를 본다
   if (sender.id !== chrome.runtime.id) return false;
+
+  // 메일 화면은 확장 페이지를 직접 열 수 없어 여기서 연다. 보낸 쪽이 결과를 기다리므로 응답한다
+  if (msg?.type === 'open-options') {
+    chrome.runtime.openOptionsPage().then(
+      () => sendResponse({ ok: true }),
+      () => sendResponse({ ok: false })
+    );
+    return true;
+  }
+
   if (msg?.type !== 'jev-call') return false;
 
   nmtRoute()

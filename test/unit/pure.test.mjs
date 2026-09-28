@@ -115,6 +115,55 @@ describe('종합 배지', () => {
   });
 });
 
+describe('받는 사람 칸에 없는 메일', () => {
+  // 참조와 단체 주소로 받은 메일의 요청은 대개 받는 사람 칸의 사람 몫이다
+  const v = (action, kind = 'task') => ({ action, kind });
+
+  it('문턱을 넘어도 받는 사람 칸에 없으면 강조하지 않고 참조로 보인다', () => {
+    const d = ext.nmtDecide(v(0.9), 0.7, false);
+    assert.equal(d.needsAction, false);
+    assert.equal(d.shown, 'cc');
+  });
+
+  it('받는 사람 칸에 있으면 그대로 강조한다', () => {
+    const d = ext.nmtDecide(v(0.9), 0.7, true);
+    assert.equal(d.needsAction, true);
+    assert.equal(d.shown, 'task');
+  });
+
+  it('표시가 없는 서비스(null)에서는 가르지 않는다', () => {
+    const d = ext.nmtDecide(v(0.9), 0.7, null);
+    assert.equal(d.needsAction, true);
+    assert.equal(d.shown, 'task');
+  });
+
+  it('항상 확인은 이 규칙보다 앞선다', () => {
+    const d = ext.nmtDecide(v(1, 'pinned'), 0.7, false);
+    assert.equal(d.needsAction, true);
+    assert.equal(d.shown, 'pinned');
+  });
+
+  it('문턱 아래는 전과 같다', () => {
+    assert.equal(ext.nmtDecide(v(0.3), 0.7, false).shown, 'fyi');
+    assert.equal(ext.nmtDecide(v(0.3, 'vendor'), 0.7, false).shown, 'vendor');
+    assert.equal(ext.nmtDecide(v(0.3), 0.7, false).needsAction, false);
+  });
+
+  it('네이버웍스는 TO 배지나 멘션 표시가 있으면 받는 사람이다', () => {
+    const p = loadFor('https://mail.worksmobile.com/w/all').nmtProfile();
+    const row = (marks) => ({ querySelector: (sel) => (sel.split(',').some((s) => marks.includes(s.trim())) ? {} : null) });
+    assert.equal(ext.nmtIsToMe(row(['.ico_recipient']), p), true);
+    assert.equal(ext.nmtIsToMe(row(['.icon_mention']), p), true);
+    assert.equal(ext.nmtIsToMe(row([]), p), false);
+  });
+
+  it('받는 사람 표시가 없는 서비스는 모른다고 답한다', () => {
+    const row = { querySelector: () => null };
+    assert.equal(ext.nmtIsToMe(row, loadFor('https://mail.google.com/mail/u/0/').nmtProfile()), null);
+    assert.equal(ext.nmtIsToMe(row, loadFor('https://mail.naver.com/v2/folders/0/all').nmtProfile()), null);
+  });
+});
+
 describe('응답 형식', () => {
   it('확률 값의 여러 표기를 읽는다', () => {
     assert.equal(ext.nmtNoulValue({ value: 0.8 }), 0.8);

@@ -111,6 +111,7 @@
   color: #1e40af;
 }
 
+.nmt-badge[data-kind="cc"],
 .nmt-badge[data-kind="sent"],
 .nmt-badge[data-kind="vendor"],
 .nmt-badge[data-kind="system"] {

@@ -27,6 +27,21 @@ const NMT_MODEL = 'jev-latest';
  */
 const NMT_STATE_MAX = 1500;
 
+/**
+ * 회신 메일에 붙이는 줄.
+ *
+ * 회신 제목은 원래 메일의 요청을 그대로 달고 온다. 목록에 미리보기가 없는 메일 서비스에서는
+ * 모델이 제목만 보고 발신자가 받는 사람에게 요청했다고 읽어, 내가 보낸 요청에 상대가 답한
+ * 메일을 답장 필요로 강조한다. 문구를 바꾸면 판정이 달라지므로 가짜 입력으로 다시 잰다.
+ */
+const NMT_REPLY_NOTE =
+  '[회신 여부] 제목이 RE: 로 시작하는 회신 메일이다. 제목의 요청은 원래 메일을 보낸 사람이 한 것이고, 받는 사람 본인이 보낸 요청에 발신자가 답한 것일 수 있다. 제목만으로 발신자가 받는 사람에게 요청했다고 보지 않는다.';
+
+/** 제목이 회신 표시(RE:, Re[2]:, 답장:, 회신:)로 시작하는가. 전달(FW:)은 따로 재지 않아 넣지 않는다 */
+function nmtIsReply(subject) {
+  return /^\s*(re|답장|회신)\s*(\[\d+\])?\s*:/i.test(String(subject ?? ''));
+}
+
 const NMT_KINDS = {
   reply: '사람이 보냈고 받는 사람이 답장을 써야 진행된다. 질문, 의견 요청, 검토 회신 요구',
   task: '사람이 보냈고 받는 사람이 무언가를 처리해야 진행된다. 계정 발급, 권한 부여, 자료나 파일 전달, 구매와 설정 변경, 시스템 작업 요청',
@@ -59,9 +74,14 @@ async function nmtJudge(mail, settings) {
     `[제목] ${(mail.subject || '(제목 없음)').slice(0, 300)}`,
   ].filter(Boolean);
 
+  // 회신 줄은 미리보기 뒤에 붙이되 자리는 먼저 떼어 둔다. 미리보기가 길어도 잘리지 않는다
+  const note = nmtIsReply(mail.subject) ? NMT_REPLY_NOTE : '';
+  const reserved = note ? note.length + 1 : 0;
+
   // 한 줄이 더 붙으므로 줄바꿈 한 글자를 함께 센다
-  const room = Math.min(500, NMT_STATE_MAX - lines.join('\n').length - 1 - '[미리보기] '.length);
+  const room = Math.min(500, NMT_STATE_MAX - lines.join('\n').length - 1 - '[미리보기] '.length - reserved);
   if (mail.preview && room > 0) lines.push(`[미리보기] ${mail.preview.slice(0, room)}`);
+  if (note) lines.push(note);
 
   const state = lines.join('\n').slice(0, NMT_STATE_MAX);
 

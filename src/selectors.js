@@ -24,6 +24,9 @@ const NMT_PROFILES = [
     subject: 'strong.mail_title',
     sender: 'span.sender_name',
     preview: null,
+    // 받는 사람 칸에 내가 있으면 TO 배지, 본문에서 멘션되면 멘션 표시가 붙는다.
+    // 네이버웍스의 "나에게 온 메일" 필터와 같은 기준이다
+    toMe: '.ico_recipient, .icon_mention',
     idSelector: 'a[href*="nMailId="]',
     idPattern: /nMailId=(\d+)/,
     readChildMark: null,
@@ -42,6 +45,7 @@ const NMT_PROFILES = [
     subject: '.y6',
     sender: 'span.bA4',
     preview: '.y2',
+    toMe: null,
     idSelector: '[data-legacy-thread-id]',
     idAttr: 'data-legacy-thread-id',
     readChildMark: null,
@@ -54,6 +58,7 @@ const NMT_PROFILES = [
     subject: '.mail_title .text',
     sender: 'button.button_sender',
     preview: null,
+    toMe: null,
     idSelector: 'a.mail_title_link',
     idPattern: /read\/\d+\/(\d+)/,
     idRowClassPattern: /\bmail-(\d+)\b/,
@@ -336,6 +341,18 @@ function nmtIsUnread(row, profile) {
   if (p.readRowClass) return !row.classList.contains(p.readRowClass);
   if (p.readChildMark) return !row.querySelector(p.readChildMark);
   return null;
+}
+
+/**
+ * 내가 받는 사람 칸에 있거나 멘션됐는가. 메일 서비스가 목록에 그 표시를 두지 않으면 null.
+ *
+ * null 은 모른다는 뜻이라 강조 규칙에 쓰지 않는다. 표시가 없는 서비스에서 false 로 읽으면
+ * 모든 메일이 참조로 보여 아무것도 강조되지 않는다.
+ */
+function nmtIsToMe(row, profile) {
+  const p = profile ?? nmtProfile();
+  if (!p?.toMe) return null;
+  return !!row.querySelector(p.toMe);
 }
 
 /** 같은 메일을 두 번 판정하지 않도록 안정적인 키를 만든다. */

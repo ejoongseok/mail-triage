@@ -75,6 +75,9 @@
   "kindSystem": {
     "message": "자동발송"
   },
+  "kindCc": {
+    "message": "참조"
+  },
   "kindSent": {
     "message": "내가 보냄"
   },

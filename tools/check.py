@@ -234,6 +234,12 @@ for key, why in (
     if mani.get(key):
         fail.append('manifest 의 %s 가 설정돼 있다. %s' % (key, why))
 
+# 그래서 메일 화면은 확장 주소를 열거나 싣지 못한다. 창으로 열든 이미지로 싣든 Chrome 이
+# ERR_BLOCKED_BY_CLIENT 로 막고, 확장 밖에서 content script 를 돌리는 시나리오 시험은 이것을 못 본다
+for f in cs:
+    if re.search(r'runtime\.getURL\s*\(|chrome-extension://', read(f)):
+        fail.append('%s: content script 가 확장 주소를 쓴다. 메일 화면에서는 막히므로 background 에 메시지를 보내 연다' % f)
+
 if set(mani.get('permissions', [])) - {'storage'}:
     fail.append('permissions 가 storage 보다 넓다: %s' % mani.get('permissions'))
 HISTORY = [

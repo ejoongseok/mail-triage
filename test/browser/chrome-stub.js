@@ -1,8 +1,9 @@
 /*
  * 확장 밖에서 content script 를 돌리기 위한 chrome API 흉내.
  *
- * content script 가 쓰는 것은 i18n, runtime 의 id 와 getURL 과 sendMessage, storage 의
- * local 과 sync 뿐이다. 판정 호출은 가짜 메일의 judge 값을 돌려주고 횟수를 센다.
+ * content script 가 쓰는 것은 i18n, runtime 의 id 와 sendMessage, storage 의 local 과
+ * sync 뿐이다. 판정 호출은 가짜 메일의 judge 값을 돌려주고 횟수를 센다. 설정 화면을
+ * 열어 달라는 부탁은 횟수만 센다.
  * 문구는 실제 번역 파일을 읽어, 화면에 나오는 문장과 같은 것으로 비교한다.
  */
 (() => {
@@ -80,6 +81,8 @@
   const test = {
     /** 판정 호출 횟수. 페이지를 넘기거나 돌아올 때 늘면 안 된다 */
     calls: 0,
+    /** 설정 화면을 열어 달라는 부탁 횟수 */
+    optionsRequests: 0,
     /** 판정 한 건에 걸리는 시간. 분류 도중에 화면을 바꾸는 시험에서 늘린다 */
     delay: 0,
     local,
@@ -105,9 +108,12 @@
     i18n: { getMessage, getUILanguage: () => 'ko' },
     runtime: {
       id: 'scenario',
-      getURL: (p) => '../../' + String(p).replace(/^\//, ''),
       async sendMessage(msg) {
         if (msg?.type === 'jev-call') return test.judge(msg.body);
+        if (msg?.type === 'open-options') {
+          test.optionsRequests += 1;
+          return { ok: true };
+        }
         return undefined;
       },
     },

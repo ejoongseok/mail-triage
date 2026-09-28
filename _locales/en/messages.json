@@ -75,6 +75,9 @@
   "kindSystem": {
     "message": "Automated"
   },
+  "kindCc": {
+    "message": "CC"
+  },
   "kindSent": {
     "message": "Sent by me"
   },
