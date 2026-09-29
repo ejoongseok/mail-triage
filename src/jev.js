@@ -137,6 +137,9 @@ async function nmtJudge(mail, settings) {
         return { error: nmtMsg('errRateLimit'), fatal: true };
       case 'network':
         return { error: `${reply.detail}` };
+      case 'timeout':
+        // background 가 기다렸다가 다시 보낸 뒤에도 늦은 것이다. 이어 부르면 메일마다 수십 초씩 걸린다
+        return { error: nmtMsg('errTimeout'), fatal: true };
       case 'needKey':
         return { error: nmtMsg('errNeedKey'), fatal: true };
       case 'relayQuota':

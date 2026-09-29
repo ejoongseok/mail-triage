@@ -12,10 +12,13 @@
 사본을 만들어 잡히는지 본다. 통과 사례만으로는 검사기가 스스로를 증명하는 셈이 된다.
 
     python tools/check.py
+    python tools/check.py --require-denylist   로컬 금지어 목록이 없으면 실패 (압축 직전)
 """
-import io, json, os, re, sys
+import io, json, os, re, subprocess, sys
 
-root = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+ARGS = [a for a in sys.argv[1:] if not a.startswith('--')]
+FLAGS = {a for a in sys.argv[1:] if a.startswith('--')}
+root = ARGS[0] if ARGS else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 os.chdir(root)
 sys.stdout.reconfigure(encoding='utf-8')
 fail = []
@@ -87,9 +90,10 @@ for group, files in (('content', cs), ('options', opt)):
 
 # --- 2b) 판정 입력과 캐시 키 -------------------------------------------------
 # 불변식: 판정에 넣는 값은 전부 캐시 키에 들어간다.
-# 캐시 키는 메일 식별자와 역할 문장의 해시뿐이므로, 입력에는 그 메일의 고유한 속성만
-# 들어가야 한다. 읽음 여부처럼 나중에 바뀌는 값을 넣으면 판정이 처음 분류한 시점의
-# 상태로 굳고, 같은 메일이 읽었는지에 따라 다르게 판정된다.
+# 캐시 키는 메일 식별자와, 판정 입력으로 보내는 설정의 해시다. 메일 쪽 입력에는 그 메일의
+# 고유한 속성만 들어가야 한다. 읽음 여부처럼 나중에 바뀌는 값을 넣으면 판정이 처음 분류한
+# 시점의 상태로 굳고, 같은 메일이 읽었는지에 따라 다르게 판정된다. 설정 쪽 입력은 캐시 키를
+# 만드는 모든 호출에 실려야 한다. 빠지면 그 설정을 바꿔도 옛 판정이 그대로 나온다.
 jev = read('src/jev.js')
 # 상태 문장은 여러 줄에 걸쳐 조립되므로, 판정 함수 첫머리부터 요청 본문을 만들기
 # 전까지를 통째로 본다. 특정 배열 모양을 찾으면 조립 방식이 바뀔 때 입력을 놓친다
@@ -101,9 +105,30 @@ else:
     volatile = set(re.findall(r'mail\.(\w+)', _m.group(1))) - STABLE
     if volatile:
         fail.append(
-            '판정 입력에 메일 고유값이 아닌 것: %s. 캐시 키는 메일 식별자와 역할 해시뿐이라 '
+            '판정 입력에 메일 고유값이 아닌 것: %s. 캐시 키는 메일 식별자와 설정 해시뿐이라 '
             '이 값이 바뀌어도 옛 판정이 그대로 나온다' % sorted(volatile)
         )
+
+    # settings.x 와 settings?.x 를 모두 잡는다. 구조 분해로 꺼내 쓰면 이 검사가 볼 수 없으므로
+    # 설정을 하나도 못 찾으면 통과시키지 않는다. 역할 문장은 늘 판정 입력이다
+    used_settings = set(re.findall(r'settings\??\.(\w+)', _m.group(1)))
+    if not used_settings:
+        fail.append('jev.js 의 판정 입력 블록에서 설정 사용을 찾지 못했다. 캐시 키 대조를 하지 못했다')
+    key_calls = [a.strip() for a in re.findall(r'nmtVerdictKey\(([^)]*)\)', read('src/content.js'))]
+    if not key_calls:
+        fail.append('content.js 에서 nmtVerdictKey 호출을 찾지 못해 설정과 캐시 키 대조를 하지 못했다')
+    if len(set(key_calls)) > 1:
+        fail.append(
+            '캐시 키를 만드는 호출의 인자가 서로 다르다: %s. 목록 다시 그리기와 분류하기가 '
+            '다른 키를 보면 저장된 판정을 찾지 못한다' % sorted(set(key_calls))
+        )
+    for args in key_calls:
+        missing = sorted(s for s in used_settings if 'settings.%s' % s not in args)
+        if missing:
+            fail.append(
+                '판정 입력으로 보내는 설정이 캐시 키에 없다: %s (호출 인자: %s). '
+                '이 설정을 바꿔도 옛 판정이 그대로 나온다' % (missing, args)
+            )
 
 # --- 3) CSS 클래스 ---------------------------------------------------------
 css = read('src/content.css')
@@ -249,10 +274,56 @@ HISTORY = [
     (r'(전에는|예전에는|처음에는)\s', '변경 이력'),
 ]
 
+# 회사, 고객사, 프로젝트 이름처럼 만든 사람의 환경을 알려 주는 고유명사. 시험 데이터를 실제
+# 메일에서 옮기다 섞이기 쉽다. 목록을 저장소에 두면 그 자체가 유출이므로 저장소 밖의 파일에서
+# 읽는다. 한 줄에 하나, # 으로 시작하는 줄은 주석이다. 파일이 없으면 건너뛰고 끝에 그렇게 적는다.
+# 결과에도 단어는 적지 않고 목록의 줄 번호만 적는다. 결과가 CI 기록 같은 곳에 남으면 그것도 유출이다
+DENY_FILE = os.environ.get('NMT_DENYLIST') or os.path.join(os.path.expanduser('~'), '.mail-triage-denylist.txt')
+deny = []
+if os.path.isfile(DENY_FILE):
+    for no, line in enumerate(io.open(DENY_FILE, encoding='utf-8-sig'), 1):
+        word = line.strip()
+        if word and not word.startswith('#'):
+            deny.append((no, word.lower()))
+elif '--require-denylist' in FLAGS:
+    fail.append('로컬 금지어 목록이 없다(~/.mail-triage-denylist.txt 또는 NMT_DENYLIST). 공개 직전 검사에는 있어야 한다')
+
+
+def squash(s):
+    return re.sub(r'[\s._-]+', '', s)
+
+
+def deny_hits(text):
+    """text 에 든 금지어의 목록 줄 번호.
+
+    띄어쓰기, 점, 밑줄, 하이픈을 달리 적은 것도 잡는다. 다만 짧은 말은 공백을 지우면 앞뒤
+    낱말이 붙어 우연히 맞으므로, 그렇게 붙여 보는 것은 네 글자 이상만이다.
+    """
+    low = text.lower()
+    flat = squash(low)
+    return [no for no, word in deny if word in low or (len(squash(word)) >= 4 and squash(word) in flat)]
+
+
+def publish_files():
+    """공개될 수 있는 파일. git 이 있으면 추적 파일과 무시되지 않은 새 파일, 없으면 디렉터리 전체"""
+    try:
+        r = subprocess.run(['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'],
+                           capture_output=True)
+        if r.returncode == 0:
+            return sorted(p for p in r.stdout.decode('utf-8').split('\0') if p)
+    except FileNotFoundError:
+        pass
+    out = []
+    for base, dirs, files in os.walk('.'):
+        dirs[:] = [d for d in dirs if d not in ('.git', 'node_modules')]
+        out += [os.path.relpath(os.path.join(base, n)).replace('\\', '/') for n in files]
+    return sorted(out)
+
+
 scan = []
-for base, _dirs, files in os.walk('.'):
-    if any(p in base for p in ('.git', 'node_modules', 'icons')):
-        continue
+for base, dirs, files in os.walk('.'):
+    # 경로 조각이 정확히 이 이름인 디렉터리만 뺀다. 부분 문자열로 빼면 .github 까지 빠진다
+    dirs[:] = [d for d in dirs if d not in ('.git', 'node_modules', 'icons')]
     for name in files:
         if name.endswith(('.js', '.mjs', '.json', '.html', '.css', '.md', '.py')):
             scan.append(os.path.join(base, name))
@@ -270,6 +341,18 @@ for path in sorted(scan):
         if hits:
             fail.append('%s: %s %d건. 규칙과 이유는 남기고 경위는 뺀다' % (path, label, len(hits)))
 
+# 금지어는 확장자와 상관없이 공개될 파일 전부와 그 이름을 본다. 검사기 자신도 본다
+published = publish_files() if deny else []
+for path in published:
+    hits = deny_hits(path)
+    try:
+        with io.open(path, encoding='utf-8') as f:
+            hits += deny_hits(f.read())
+    except (UnicodeDecodeError, OSError):
+        pass  # 그림 같은 이진 파일과 지워진 파일은 이름만 본다
+    for no in sorted(set(hits)):
+        fail.append('%s: 로컬 금지어 목록 %d번째 줄이 들어 있다 (공개 저장소에 나가면 안 된다)' % (path, no))
+
 # 코드 안의 날짜는 대개 언제 무엇이 있었는지의 기록이다. 규칙은 날짜 없이도 남는다.
 # 문서의 날짜(개인정보처리방침의 갱신일 같은)는 대상이 아니다
 for name in sorted(os.listdir('src')):
@@ -277,7 +360,8 @@ for name in sorted(os.listdir('src')):
         for m in re.finditer(r'20[0-9]{2}-[0-9]{2}-[0-9]{2}', read('src/' + name)):
             fail.append('src/%s: 코드에 날짜 %s 가 있다. 언제 무엇이 있었는지는 공개 코드에 남기지 않는다' % (name, m.group(0)))
 
-print('검사 대상: 스크립트 %d, i18n 키 %d, 반출 검사 %d파일' % (len(srcs), len(ko), len(scan)))
+deny_note = '%d개로 %d파일' % (len(deny), len(published)) if os.path.isfile(DENY_FILE) else '목록 파일 없음'
+print('검사 대상: 스크립트 %d, i18n 키 %d, 반출 검사 %d파일, 로컬 금지어 %s' % (len(srcs), len(ko), len(scan), deny_note))
 if fail:
     print('결함 %d건' % len(fail))
     for x in fail:

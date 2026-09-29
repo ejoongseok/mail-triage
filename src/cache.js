@@ -27,11 +27,17 @@ function nmtHash(text) {
 /**
  * 판정 캐시의 최종 키.
  *
- * 메일 식별자만으로는 부족하다. 역할 문장이 바뀌면 같은 메일의 판정이 달라져야 하는데
- * 메일 키만 쓰면 옛 결과가 그대로 나온다.
+ * 메일 식별자만으로는 부족하다. 판정 입력으로 보내는 설정(역할 문장, 본인 이름과 주소)이
+ * 바뀌면 같은 메일의 판정이 달라져야 하는데 메일 키만 쓰면 옛 결과가 그대로 나온다.
+ * 판정 입력이 아닌 설정(강조 강도, 항상 확인과 항상 무시)은 넣지 않는다. 넣으면 그 설정을
+ * 바꿀 때마다 전 건이 다시 호출된다.
+ *
+ * 이름 칸이 비어 있으면 그 칸을 키에 붙이지 않아 키가 이름 칸이 생기기 전과 같다. 늘 붙이면
+ * 업데이트 직후 이름을 적지 않은 사용자까지 저장된 판정이 모두 무효가 되어 다시 호출된다.
  */
-function nmtVerdictKey(mailKey, persona) {
-  return `v${NMT_SCHEMA_VERSION}:${nmtHash(persona ?? '')}:${mailKey}`;
+function nmtVerdictKey(mailKey, persona, identity) {
+  const who = identity ? `:i${nmtHash(identity)}` : '';
+  return `v${NMT_SCHEMA_VERSION}:${nmtHash(persona ?? '')}${who}:${mailKey}`;
 }
 
 async function nmtCacheLoad() {

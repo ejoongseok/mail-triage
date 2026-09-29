@@ -17,8 +17,18 @@ import { ROOT, loadExtension } from '../harness.mjs';
  * background.js 를 저장소 흉내와 함께 올린다.
  *
  * local 은 이 기기 저장소의 내용이다. failWhen 이 참을 돌려주는 조회는 예외를 던진다.
+ * status 가 배열이면 호출 순서대로 쓰고, 다 쓰면 마지막 값을 되풀이한다. hang 이면 응답이
+ * 오지 않아 시간 제한이 끊어야 끝난다.
  */
-function loadBackground({ local = {}, failWhen = () => false, status = 200, reply = { answers: {} } } = {}) {
+function loadBackground({
+  local = {},
+  failWhen = () => false,
+  status = 200,
+  reply = { answers: {} },
+  headers = {},
+  hang = false,
+  offline = false,
+} = {}) {
   const calls = [];
   const listeners = [];
   const opened = [];
@@ -43,12 +53,28 @@ function loadBackground({ local = {}, failWhen = () => false, status = 200, repl
     },
   };
 
+  const statusAt = (i) => (Array.isArray(status) ? status[Math.min(i, status.length - 1)] : status);
+  // 확장이 요청한 대기 시간. 실제로는 짧게 줄여 기다리지만 얼마를 기다리려 했는지는 남긴다
+  const delays = [];
   const ctx = vm.createContext({
     console,
     crypto: globalThis.crypto,
-    fetch: async (url, init) => {
+    AbortController,
+    Response,
+    setTimeout: (fn, ms) => {
+      delays.push(ms);
+      return setTimeout(fn, Math.min(ms, 5));
+    },
+    clearTimeout,
+    fetch: (url, init) => {
       calls.push({ url, init });
-      return new Response(JSON.stringify(reply), { status });
+      if (offline) return Promise.reject(new TypeError('Failed to fetch'));
+      if (hang) {
+        return new Promise((_, reject) =>
+          init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify(reply), { status: statusAt(calls.length - 1), headers }));
     },
     chrome: {
       runtime: {
@@ -64,7 +90,7 @@ function loadBackground({ local = {}, failWhen = () => false, status = 200, repl
   });
   ctx.importScripts = (path) => vm.runInContext(readFileSync(join(ROOT, path), 'utf8'), ctx);
   vm.runInContext(readFileSync(join(ROOT, 'src/background.js'), 'utf8'), ctx, { filename: 'background.js' });
-  return { ctx, calls, listeners, opened };
+  return { ctx, calls, listeners, opened, delays };
 }
 
 /** 판정 하나를 돌리고, background 로 보낸 본문과 판정 결과를 돌려준다 */
@@ -153,6 +179,96 @@ describe('중계가 거절한 까닭을 가려 알린다', () => {
   }
 });
 
+describe('본인 키 경로는 기다렸다가 다시 보낸다', () => {
+  // API 는 429 와 529 에 잠시 기다렸다가 지수 백오프로 다시 보내라고 한다
+  const own = { key: 'k' };
+
+  it('429 뒤에 성공하면 성공으로 돌려준다', async () => {
+    const { ctx, calls } = loadBackground({ status: [429, 200], reply: { answers: { action: { noul: 0.4 } } } });
+    const got = await ctx.callJev(own, { model: 'x' });
+    assert.equal(calls.length, 2);
+    assert.ok(got.json, '다시 보낸 뒤의 응답을 돌려주지 않았다');
+  });
+
+  it('529 가 이어지면 세 번 더 보내고 멈춘다', async () => {
+    const { ctx, calls } = loadBackground({ status: 529 });
+    const got = await ctx.callJev(own, { model: 'x' });
+    assert.equal(calls.length, 4);
+    assert.equal(got.errorCode, 'http');
+    assert.equal(got.status, 529);
+  });
+
+  it('한도 초과가 이어지면 한도 초과로 알린다', async () => {
+    const { ctx, calls } = loadBackground({ status: 429 });
+    const got = await ctx.callJev(own, { model: 'x' });
+    assert.equal(calls.length, 4);
+    assert.equal(got.errorCode, 'rate');
+  });
+
+  it('오래 기다리라고 하면 기다리지 않고 바로 알린다', async () => {
+    const { ctx, calls } = loadBackground({ status: 429, headers: { 'retry-after': '60' } });
+    const got = await ctx.callJev(own, { model: 'x' });
+    assert.equal(calls.length, 1);
+    assert.equal(got.errorCode, 'rate');
+  });
+
+  it('응답이 오지 않으면 시간 제한으로 끊고 다시 보낸 뒤 시간 초과로 알린다', async () => {
+    const { ctx, calls } = loadBackground({ hang: true });
+    const got = await ctx.callJev(own, { model: 'x' });
+    assert.equal(calls.length, 4);
+    assert.equal(got.errorCode, 'timeout');
+  });
+
+  it('연결이 안 되면 다시 보낸 뒤 연결 오류로 알린다', async () => {
+    const { ctx, calls } = loadBackground({ offline: true });
+    const got = await ctx.callJev(own, { model: 'x' });
+    assert.equal(calls.length, 4);
+    assert.equal(got.errorCode, 'network');
+  });
+
+  it('retry-after-ms 를 읽는다', async () => {
+    // 읽지 못하면 백오프로 세 번 더 보내게 된다
+    const { ctx, calls } = loadBackground({ status: 429, headers: { 'retry-after-ms': '60000' } });
+    const got = await ctx.callJev(own, { model: 'x' });
+    assert.equal(calls.length, 1);
+    assert.equal(got.errorCode, 'rate');
+  });
+
+  it('곧바로 다시 보내라고 해도 백오프만큼은 기다린다', async () => {
+    const { ctx, calls, delays } = loadBackground({ status: [429, 200], headers: { 'retry-after': '0' } });
+    await ctx.callJev(own, { model: 'x' });
+    assert.equal(calls.length, 2);
+    // 첫 백오프는 0.5초에서 최대 4분의 1을 뺀 값이다
+    assert.ok(
+      delays.some((ms) => ms >= 375 && ms <= 500),
+      '기다린 시간: ' + delays.join(', ')
+    );
+  });
+
+  it('요청 자체가 틀린 422 는 다시 보내지 않는다', async () => {
+    const { ctx, calls } = loadBackground({ status: 422 });
+    const got = await ctx.callJev(own, { model: 'x' });
+    assert.equal(calls.length, 1);
+    assert.equal(got.status, 422);
+  });
+
+  it('중계 경로는 다시 보내지 않는다. 중계가 시도마다 하루 한도를 차감한다', async () => {
+    const { ctx, calls } = loadBackground({ status: 529 });
+    await ctx.callJev({ relay: true }, { model: 'x' });
+    assert.equal(calls.length, 1);
+  });
+
+  it('중계 경로는 기다리다 끊지 않는다. 끊어도 한도는 이미 차감됐다', async () => {
+    const relay = loadBackground();
+    await relay.ctx.callJev({ relay: true }, { model: 'x' });
+    assert.equal(relay.calls[0].init.signal, undefined);
+
+    const direct = loadBackground();
+    await direct.ctx.callJev(own, { model: 'x' });
+    assert.ok(direct.calls[0].init.signal, '본인 키 경로에는 시간 제한이 있어야 한다');
+  });
+});
+
 describe('상태 문장은 중계가 받는 길이를 넘지 않는다', () => {
   it('모든 칸이 아주 길어도 1500자 안에 들고 제목과 발신자가 남는다', async () => {
     const { body } = await judgeWith(
@@ -223,6 +339,19 @@ describe('응답의 종류는 정해 둔 것만 받는다', () => {
     });
   }
 });
+
+describe('시간 초과는 분류를 멈춘다', () => {
+  it('background 가 다시 보낸 뒤에도 늦으면 남은 메일을 부르지 않는다', async () => {
+    const { out } = await judgeWith({ persona: '개발자' }, { sender: 'a', subject: 'b' }, { errorCode: 'timeout' });
+    assert.equal(out.fatal, true);
+  });
+
+  it('연결 오류 하나로는 멈추지 않는다', async () => {
+    const { out } = await judgeWith({ persona: '개발자' }, { sender: 'a', subject: 'b' }, { errorCode: 'network', detail: 'x' });
+    assert.notEqual(out.fatal, true);
+  });
+});
+
 describe('설정 화면 열기', () => {
   // 처리부가 없으면 응답이 오지 않는다. 기다리기 전에 판정하고, 기다림에도 끝을 둔다
   it('메일 화면의 부탁을 받아 확장 쪽에서 연다', { timeout: 2000 }, async () => {

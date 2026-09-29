@@ -34,17 +34,67 @@ function fillJobs() {
     if (!sel.value) return;
     const cur = $('persona').value.trim();
     // 손으로 쓴 내용이 있으면 덮기 전에 묻는다
-    if (cur && !isTemplate(cur, groups) && !confirm(nmtMsg('optRoleHint'))) {
+    if (cur && !isTemplate(cur, groups) && !confirm(nmtMsg('optRoleOverwrite'))) {
       sel.value = '';
       return;
     }
     $('persona').value = sel.value;
     $('persona').focus();
+    renderHints();
   });
 }
 
 function isTemplate(text, groups) {
   return groups.some(({ items }) => items.some(([, t]) => t === text));
+}
+
+/* 직군별 추천 단어 ------------------------------------------------------- */
+
+/**
+ * 역할 문장에 맞는 직군의 추천 단어를 항상 확인 칸 아래에 이유와 함께 보여 준다.
+ *
+ * 누른 단어만 칸에 들어가고, 누르는 순간 저장 버튼과 같은 길로 설정 전체를 저장한다. 툴바
+ * 팝업은 메일 화면으로 제목을 확인하러 가는 순간 닫혀, 저장 버튼을 기다리면 추가한 단어와 직군을
+ * 골라 채운 역할 문장이 함께 사라진다. 저장 버튼의 검사(빠진 칸, 두 목록의 겹침)도 그대로 거친다.
+ *
+ * 칸에 이미 있는 단어는 버튼을 끈다. 항상 무시에 있는 단어도 끈다. 누르면 두 목록에 같은 줄이
+ * 생기고, 규칙상 항상 확인이 이겨 사용자가 정한 무시가 조용히 뒤집힌다. 칸을 손으로 고쳐도 따라
+ * 바뀐다.
+ */
+function renderHints() {
+  const box = $('jobHints');
+  const found = nmtJobHints($('persona').value);
+  box.hidden = !found?.hints.length;
+  if (box.hidden) return;
+
+  $('jobHintsTitle').textContent = nmtMsg('optHintTitle', found.name);
+  const list = $('jobHintsList');
+  list.textContent = '';
+
+  for (const [word, why] of found.hints) {
+    const added = nmtListHas($('alwaysShow').value, word);
+    const muted = nmtListHas($('alwaysMute').value, word);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'ghost';
+    btn.textContent = added ? nmtMsg('optHintAdded') : muted ? nmtMsg('optHintMuted') : nmtMsg('optHintAdd');
+    btn.disabled = added || muted;
+    btn.addEventListener('click', async () => {
+      $('alwaysShow').value = nmtListAdd($('alwaysShow').value, word);
+      renderHints();
+      if (await saveAll()) showSaved(nmtMsg('optHintSaved', word), '#1a7f37', true);
+    });
+
+    const w = document.createElement('code');
+    w.textContent = word;
+    const r = document.createElement('span');
+    r.className = 'why';
+    r.textContent = why;
+
+    const li = document.createElement('li');
+    li.append(btn, w, r);
+    list.appendChild(li);
+  }
 }
 
 /* 강조 강도 ------------------------------------------------------------- */
@@ -165,6 +215,7 @@ async function load() {
 
   const hit = [...$('jobSelect').options].find((o) => o.value === s.persona);
   $('jobSelect').value = hit ? hit.value : '';
+  renderHints();
 
   $('cacheInfo').textContent = nmtMsg('optCacheCount', await nmtCacheCount());
   $('doneInfo').textContent = nmtMsg('optDoneCount', await nmtDoneCount());
@@ -178,6 +229,10 @@ async function load() {
   renderMode();
 }
 
+$('persona').addEventListener('input', renderHints);
+$('alwaysShow').addEventListener('input', renderHints);
+$('alwaysMute').addEventListener('input', renderHints);
+
 document.querySelectorAll('input[name="source"]').forEach((r) => {
   r.addEventListener('change', renderMode);
 });
@@ -186,7 +241,19 @@ document.querySelectorAll('input[name="strength"]').forEach((r) => {
   r.addEventListener('change', markChosen);
 });
 
-$('save').addEventListener('click', async () => {
+let savedTimer = 0;
+
+/** 저장 결과 한 줄. 성공만 잠시 뒤 지운다. 앞선 타이머가 뒤에 뜬 경고를 지우지 않게 매번 끊는다 */
+function showSaved(text, color, transient) {
+  clearTimeout(savedTimer);
+  const el = $('saved');
+  el.style.color = color;
+  el.textContent = text;
+  if (transient) savedTimer = setTimeout(() => (el.textContent = ''), 4000);
+}
+
+/** 모든 칸을 저장하고 빠진 칸과 두 목록의 겹침을 알린다. 알릴 것 없이 저장했으면 true */
+async function saveAll() {
   const apiKey = $('apiKey').value.trim();
   const persona = $('persona').value.trim();
 
@@ -219,21 +286,19 @@ $('save').addEventListener('click', async () => {
 
   renderMode();
 
-  const el = $('saved');
   if (both.length) {
-    el.style.color = '#93500a';
-    el.textContent = nmtMsg('optBothLists', both.join(', '));
-    return;
+    showSaved(nmtMsg('optBothLists', both.join(', ')), '#93500a', false);
+    return false;
   }
   if (missing.length) {
-    el.style.color = '#b42318';
-    el.textContent = nmtMsg('optSavedIncomplete', missing.join(', '));
-  } else {
-    el.style.color = '#1a7f37';
-    el.textContent = nmtMsg('optSaved');
-    setTimeout(() => (el.textContent = ''), 4000);
+    showSaved(nmtMsg('optSavedIncomplete', missing.join(', ')), '#b42318', false);
+    return false;
   }
-});
+  showSaved(nmtMsg('optSaved'), '#1a7f37', true);
+  return true;
+}
+
+$('save').addEventListener('click', () => saveAll());
 
 $('clearCache').addEventListener('click', async () => {
   await nmtCacheClear();

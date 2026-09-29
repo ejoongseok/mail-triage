@@ -13,7 +13,8 @@
  */
 
 (() => {
-  const ACTION_KINDS = new Set(['reply', 'task', 'approval', 'schedule']);
+  // 규칙으로 강조하는 항상 확인과 멘션 배지도 강조된 행에만 붙는다
+  const ACTION_KINDS = new Set(['reply', 'task', 'approval', 'schedule', 'pinned', 'mention']);
 
   const rows = [...document.querySelectorAll('[data-nmt-state]')];
   const allRows = (() => {

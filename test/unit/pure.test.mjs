@@ -6,8 +6,10 @@
  */
 
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
-import { loadExtension, loadFor, valueIn } from '../harness.mjs';
+import { ROOT, loadExtension, loadFor, valueIn } from '../harness.mjs';
 
 const ext = loadExtension();
 
@@ -91,6 +93,25 @@ describe('캐시 키', () => {
   it('질문 설계가 바뀌면 옛 판정이 무효가 되도록 버전이 앞에 붙는다', () => {
     assert.match(ext.nmtVerdictKey('gmail:1', ''), /^v\d+:/);
   });
+
+  it('본인 이름과 주소가 바뀌면 키가 달라진다', () => {
+    // 본인 이름과 주소도 판정 입력으로 보내므로 옛 결과를 그대로 쓰면 안 된다
+    assert.notEqual(
+      ext.nmtVerdictKey('gmail:123', '서버 개발자', '홍길동'),
+      ext.nmtVerdictKey('gmail:123', '서버 개발자', '김철수')
+    );
+    assert.notEqual(
+      ext.nmtVerdictKey('gmail:123', '서버 개발자', ''),
+      ext.nmtVerdictKey('gmail:123', '서버 개발자', '홍길동')
+    );
+  });
+
+  it('이름 칸이 비어 있으면 키가 이름 칸이 생기기 전과 같다', () => {
+    // 늘 붙이면 업데이트 직후 이름을 적지 않은 사용자까지 저장된 판정이 모두 무효가 된다
+    const before = valueIn(ext, "`v${NMT_SCHEMA_VERSION}:${nmtHash('서버 개발자')}:gmail:123`");
+    assert.equal(ext.nmtVerdictKey('gmail:123', '서버 개발자', ''), before);
+    assert.equal(ext.nmtVerdictKey('gmail:123', '서버 개발자', undefined), before);
+  });
 });
 
 describe('종합 배지', () => {
@@ -149,6 +170,27 @@ describe('받는 사람 칸에 없는 메일', () => {
     assert.equal(ext.nmtDecide(v(0.3), 0.7, false).needsAction, false);
   });
 
+  it('나를 멘션한 메일은 받는 사람 칸에 없어도 강조한다', () => {
+    const d = ext.nmtDecide(v(1, 'mention'), 0.7, false);
+    assert.equal(d.needsAction, true);
+    assert.equal(d.shown, 'mention');
+  });
+
+  it('네이버웍스는 멘션 표시로 나를 멘션했는지 안다', () => {
+    const p = loadFor('https://mail.worksmobile.com/w/all').nmtProfile();
+    const row = (marks) => ({ querySelector: (sel) => (sel.split(',').some((s) => marks.includes(s.trim())) ? {} : null) });
+    assert.equal(ext.nmtIsMentioned(row(['.icon_mention']), p), true);
+    // 받는 사람 칸에만 있는 것은 멘션이 아니다
+    assert.equal(ext.nmtIsMentioned(row(['.ico_recipient']), p), false);
+    assert.equal(ext.nmtIsMentioned(row([]), p), false);
+  });
+
+  it('멘션 표시가 없는 서비스는 모른다고 답한다', () => {
+    const row = { querySelector: () => ({}) };
+    const gmail = loadFor('https://mail.google.com/mail/u/0/').nmtProfile();
+    assert.equal(ext.nmtIsMentioned(row, gmail), null);
+  });
+
   it('네이버웍스는 TO 배지나 멘션 표시가 있으면 받는 사람이다', () => {
     const p = loadFor('https://mail.worksmobile.com/w/all').nmtProfile();
     const row = (marks) => ({ querySelector: (sel) => (sel.split(',').some((s) => marks.includes(s.trim())) ? {} : null) });
@@ -161,6 +203,150 @@ describe('받는 사람 칸에 없는 메일', () => {
     const row = { querySelector: () => null };
     assert.equal(ext.nmtIsToMe(row, loadFor('https://mail.google.com/mail/u/0/').nmtProfile()), null);
     assert.equal(ext.nmtIsToMe(row, loadFor('https://mail.naver.com/v2/folders/0/all').nmtProfile()), null);
+  });
+});
+
+describe('규칙 판정의 순서', () => {
+  // 규칙에 걸리면 모델에 묻지 않는다. null 일 때만 호출이 나간다
+  const works = loadFor('https://mail.worksmobile.com/w/all');
+  const p = works.nmtProfile();
+  const row = (marks = []) => ({
+    querySelector: (sel) => (sel.split(',').some((s) => marks.includes(s.trim())) ? {} : null),
+  });
+  const mail = (email, sender = '보낸 사람', subject = '제목') => ({ email, sender, subject });
+  const settings = (alwaysShow = '', alwaysMute = '') => ({ alwaysShow, alwaysMute });
+  const kindOf = (r, m, s = settings(), me = '') => works.nmtRuleVerdict(r, m, s, p, me)?.kind ?? null;
+
+  it('나를 멘션한 메일은 모델에 묻지 않고 강조한다', () => {
+    const v = works.nmtRuleVerdict(row(['.icon_mention']), mail('kim@corp.com'), settings(), p, '');
+    assert.equal(v.kind, 'mention');
+    // 가장 엄격한 강조 강도에서도, 받는 사람 칸에 없어도 강조된다
+    assert.equal(works.nmtDecide(v, 0.85, false).needsAction, true);
+  });
+
+  it('멘션은 회신 불가 주소보다 앞선다', () => {
+    assert.equal(kindOf(row(['.icon_mention']), mail('no-reply@corp.com')), 'mention');
+    assert.equal(kindOf(row([]), mail('no-reply@corp.com')), 'system');
+  });
+
+  it('항상 확인과 항상 무시는 멘션보다 앞선다', () => {
+    assert.equal(kindOf(row(['.icon_mention']), mail('kim@corp.com'), settings('kim@corp.com')), 'pinned');
+    assert.equal(kindOf(row(['.icon_mention']), mail('kim@corp.com'), settings('', 'kim@corp.com')), 'muted');
+  });
+
+  it('내가 보낸 메일은 멘션 표시가 있어도 내가 보냄이다', () => {
+    assert.equal(kindOf(row(['.icon_mention']), mail('me@corp.com', '홍길동'), settings(), '홍길동'), 'sent');
+  });
+
+  it('본인 발신은 항상 확인과 항상 무시보다 앞선다', () => {
+    // 목록을 앞에 두면 받은 메일과 보낸 메일이 섞인 목록에서 내가 보낸 요청이 제목 단어에 걸려
+    // 강조된다. 내가 보낸 메일은 내가 처리할 일이 아니다
+    const m = mail('me@corp.com', '홍길동', '[긴급] 서버 점검 요청');
+    assert.equal(kindOf(row([]), m, settings('긴급'), '홍길동'), 'sent');
+    assert.equal(kindOf(row([]), m, settings('', '서버 점검'), '홍길동'), 'sent');
+    assert.equal(kindOf(row([]), m, settings('me@corp.com'), '홍길동'), 'sent');
+    // 같은 제목이라도 남이 보냈으면 목록이 정한다. 상대가 보낸 회신도 원래 제목을 달고 와 걸린다
+    const reply = mail('kim@corp.com', '김철수', 'RE: [긴급] 서버 점검 요청');
+    assert.equal(kindOf(row([]), reply, settings('긴급'), '홍길동'), 'pinned');
+    assert.equal(kindOf(row([]), reply, settings('', '서버 점검'), '홍길동'), 'muted');
+  });
+
+  it('본인 발신은 회신 불가 주소보다 앞선다', () => {
+    // 이름 칸의 값이 알림 발신자 이름과 겹치면 자동발송 대신 내가 보냄이 된다. README 의 순서와 같다
+    assert.equal(kindOf(row([]), mail('no-reply@corp.com', '홍길동'), settings(), '홍길동'), 'sent');
+  });
+
+  it('규칙에 걸리지 않으면 모델에 묻는다', () => {
+    assert.equal(kindOf(row(['.ico_recipient']), mail('kim@corp.com')), null);
+  });
+
+  it('멘션 표시가 없는 서비스에서는 멘션 규칙이 걸리지 않는다', () => {
+    const gmail = loadFor('https://mail.google.com/mail/u/0/');
+    const v = gmail.nmtRuleVerdict(row(['.icon_mention']), mail('kim@corp.com'), settings(), gmail.nmtProfile(), '');
+    assert.equal(v, null);
+  });
+
+  it('목록 다시 그리기와 분류하기가 같은 규칙 함수를 쓴다', () => {
+    // 한쪽에만 규칙을 더하면 다시 그릴 때와 분류할 때의 표시가 갈린다
+    // 저장소는 CRLF 로 체크아웃될 수 있다. 줄 끝을 맞춘 뒤 함수 본문을 자른다
+    const src = readFileSync(join(ROOT, 'src/content.js'), 'utf8').replace(/\r\n/g, '\n');
+    const body = (name) => {
+      const start = src.indexOf(`async function ${name}(`);
+      const end = src.indexOf('\n}\n', start);
+      assert.ok(start >= 0 && end > start, name + ' 본문을 찾지 못했다');
+      return src.slice(start, end);
+    };
+    for (const name of ['nmtRepaint', 'nmtRun']) {
+      assert.ok(body(name).includes('nmtRuleVerdict('), name + ' 이 규칙 함수를 쓰지 않는다');
+      assert.ok(!body(name).includes('nmtIsNoReply('), name + ' 이 규칙을 따로 판단한다');
+    }
+  });
+});
+
+describe('배지 툴팁은 걸린 규칙을 말한다', () => {
+  // 규칙 판정에 확률을 적으면 모델이 100% 확신한 것처럼 읽히고, 무엇을 고쳐야 할지 알 수 없다
+  const works = loadFor('https://mail.worksmobile.com/w/all');
+  const p = works.nmtProfile();
+  const row = (marks = []) => ({
+    querySelector: (sel) => (sel.split(',').some((s) => marks.includes(s.trim())) ? {} : null),
+  });
+  const mail = (email, subject = '제목', sender = '보낸 사람') => ({ email, sender, subject });
+  const settings = (alwaysShow = '', alwaysMute = '') => ({ alwaysShow, alwaysMute });
+  const verdict = (r, m, s = settings(), me = '') => works.nmtRuleVerdict(r, m, s, p, me);
+  const title = (v) => works.nmtBadgeTitle(v, works.nmtDecide(v, 0.7, true).shown);
+
+  it('목록 규칙은 걸린 줄을 적힌 그대로 남긴다', () => {
+    const v = verdict(row(), mail('ci@corp.com', 'my-app | Failed pipeline for main'), settings('긴급\nFailed Pipeline'));
+    assert.equal(v.rule, 'show');
+    assert.equal(v.word, 'Failed Pipeline');
+    assert.ok(title(v).includes('항상 확인할 것'), title(v));
+    assert.ok(title(v).includes('"Failed Pipeline"'), title(v));
+    assert.ok(!title(v).includes('행동 필요'), '규칙 판정에 확률을 적었다');
+  });
+
+  it('두 목록에 걸리면 이긴 쪽의 줄을 남긴다', () => {
+    const m = mail('spam@x.com', '[프로모션] 상반기 결산 세미나');
+    const v = verdict(row(), m, settings('세미나', '[프로모션] 상반기'));
+    assert.equal(v.rule, 'mute');
+    assert.equal(v.word, '[프로모션] 상반기');
+    assert.ok(title(v).includes('항상 무시할 것'), title(v));
+  });
+
+  it('규칙마다 다른 이유를 적는다', () => {
+    const cases = [
+      [verdict(row(['.icon_mention']), mail('kim@corp.com')), 'mention', '멘션'],
+      [verdict(row(), mail('no-reply@corp.com')), 'noreply', '회신 불가'],
+      [verdict(row(), mail('me@corp.com', '제목', '홍길동'), settings(), '홍길동'), 'sent', '내가 보낸'],
+    ];
+    for (const [v, rule, phrase] of cases) {
+      assert.equal(v.rule, rule);
+      assert.ok(title(v).includes(phrase), rule + ': ' + title(v));
+      assert.ok(!title(v).includes('행동 필요'), rule + ' 에 확률을 적었다');
+    }
+  });
+
+  it('모델이 자동발송이라 답한 판정은 규칙이 아니라 확률을 적는다', () => {
+    // 종류만 보고 규칙 문구를 고르면, 모델이 system 이라 답한 행이 회신 불가 주소라고 적힌다
+    const v = { action: 0.12, kind: 'system', kindConfidence: 0.9, deadline: 0 };
+    assert.ok(title(v).includes('행동 필요 12%'), title(v));
+    assert.ok(!title(v).includes('회신 불가'), title(v));
+  });
+
+  it('참조로 흐린 모델 판정은 원래 분류를 함께 적는다', () => {
+    const v = { action: 0.9, kind: 'reply', kindConfidence: 0.8, deadline: 0 };
+    const shown = works.nmtDecide(v, 0.7, false).shown;
+    assert.equal(shown, 'cc');
+    assert.ok(works.nmtBadgeTitle(v, shown).includes('분류는 답장 필요'), works.nmtBadgeTitle(v, shown));
+  });
+
+  it('배지를 붙이는 함수가 이 툴팁 함수를 쓴다', () => {
+    // 툴팁 함수만 시험하면, 배지를 붙이는 쪽이 예전처럼 확률을 직접 적어도 통과한다
+    const src = readFileSync(join(ROOT, 'src/content.js'), 'utf8').replace(/\r\n/g, '\n');
+    const start = src.indexOf('function nmtMark(');
+    const body = src.slice(start, src.indexOf('\n}\n', start));
+    assert.ok(start >= 0, 'nmtMark 본문을 찾지 못했다');
+    assert.ok(body.includes('nmtBadgeTitle('), 'nmtMark 가 툴팁 함수를 쓰지 않는다');
+    assert.ok(!body.includes("'badgeTip'"), 'nmtMark 가 확률 문구를 따로 만든다');
   });
 });
 
@@ -299,6 +485,17 @@ describe('사용자가 정한 발신자', () => {
   it('발신자를 못 뽑았으면 맞지 않는다', () => {
     assert.equal(ext.nmtSenderMatchLength(mail('', ''), 'ceo@example.com') > 0, false);
   });
+
+  it('걸린 줄 가운데 가장 긴 것을 적힌 그대로 돌려준다', () => {
+    // 툴팁이 이 줄을 보여 준다. 소문자로 바꿔 돌려주면 사용자가 목록에서 그 줄을 찾기 어렵다
+    const list = '@Partner.co.kr\nKim@Partner.co.kr\n  \nk';
+    assert.equal(ext.nmtSenderMatch(mail('kim@partner.co.kr'), list), 'Kim@Partner.co.kr');
+    assert.equal(ext.nmtSenderMatch(mail('lee@partner.co.kr'), list), '@Partner.co.kr');
+    assert.equal(ext.nmtSenderMatch(mail('lee@other.com'), list), '');
+    assert.equal(ext.nmtSenderMatch(mail('lee@other.com'), ''), '');
+    // 한 글자 줄은 걸린 줄로 돌려주지 않는다. 돌려주면 툴팁이 k 에 걸렸다고 적는다
+    assert.equal(ext.nmtSenderMatch(mail('kim@other.com'), list), '');
+  });
 });
 
 describe('두 목록이 겹칠 때', () => {
@@ -330,12 +527,16 @@ describe('두 목록이 겹칠 때', () => {
 });
 
 describe('설정과 캐시의 관계', () => {
-  // 설정을 바꿀 때 판정을 비워야 하는지가 반복해서 문제가 됐다. 역할만 키에 들어가고
-  // 나머지는 캐시보다 먼저 적용되거나 저장된 값을 다시 비교한다
+  // 설정을 바꿀 때 판정을 비워야 하는지가 반복해서 문제가 됐다. 판정 입력으로 보내는 역할과
+  // 본인 이름과 주소만 키에 들어가고, 나머지는 캐시보다 먼저 적용되거나 저장된 값을 다시 비교한다
   it('강조 강도는 캐시 키에 들어가지 않는다', () => {
     // 들어가면 문턱을 조금 바꿀 때마다 전 건이 다시 호출된다
     assert.equal(ext.nmtVerdictKey('gmail:1', '역할').length, ext.nmtVerdictKey('gmail:1', '역할').length);
-    assert.equal(ext.nmtVerdictKey.length, 2, 'nmtVerdictKey 가 받는 인자는 메일 키와 역할뿐이어야 한다');
+    assert.equal(
+      ext.nmtVerdictKey.length,
+      3,
+      'nmtVerdictKey 가 받는 인자는 메일 키와, 판정 입력으로 보내는 역할과 본인 이름과 주소뿐이어야 한다'
+    );
   });
 
   it('역할만 키를 가른다', () => {

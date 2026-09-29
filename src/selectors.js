@@ -27,6 +27,7 @@ const NMT_PROFILES = [
     // 받는 사람 칸에 내가 있으면 TO 배지, 본문에서 멘션되면 멘션 표시가 붙는다.
     // 네이버웍스의 "나에게 온 메일" 필터와 같은 기준이다
     toMe: '.ico_recipient, .icon_mention',
+    mention: '.icon_mention',
     idSelector: 'a[href*="nMailId="]',
     idPattern: /nMailId=(\d+)/,
     readChildMark: null,
@@ -46,6 +47,7 @@ const NMT_PROFILES = [
     sender: 'span.bA4',
     preview: '.y2',
     toMe: null,
+    mention: null,
     idSelector: '[data-legacy-thread-id]',
     idAttr: 'data-legacy-thread-id',
     readChildMark: null,
@@ -59,6 +61,7 @@ const NMT_PROFILES = [
     sender: 'button.button_sender',
     preview: null,
     toMe: null,
+    mention: null,
     idSelector: 'a.mail_title_link',
     idPattern: /read\/\d+\/(\d+)/,
     idRowClassPattern: /\bmail-(\d+)\b/,
@@ -231,19 +234,26 @@ const NMT_AUTO_LOCALS = new Set([
  *
  * 한 줄에 하나씩 적고, 들어 있기만 하면 맞는 것으로 본다. 주소 전체를 적으면 그 사람만,
  * 도메인만 적으면 그 회사 전체가 걸린다. 한 글자짜리는 아무 데나 맞으므로 무시한다.
+ *
+ * 걸린 줄 가운데 가장 긴 것을 적힌 그대로 돌려준다. 걸린 줄이 없으면 빈 문자열이다.
+ * 배지 툴팁이 이 줄을 보여 주므로, 사용자는 목록의 어느 줄을 고쳐야 할지 안다.
  */
-function nmtSenderMatchLength(mail, list) {
-  if (!list) return 0;
+function nmtSenderMatch(mail, list) {
+  if (!list) return '';
 
   const hay = ((mail.email || '') + ' ' + (mail.sender || '') + ' ' + (mail.subject || ''))
     .toLowerCase();
-  if (!hay.trim()) return 0;
+  if (!hay.trim()) return '';
 
   return list
     .split('\n')
-    .map((line) => line.trim().toLowerCase())
-    .filter((line) => line.length >= 2 && hay.includes(line))
-    .reduce((longest, line) => Math.max(longest, line.length), 0);
+    .map((line) => line.trim())
+    .filter((line) => line.length >= 2 && hay.includes(line.toLowerCase()))
+    .reduce((longest, line) => (line.length > longest.length ? line : longest), '');
+}
+
+function nmtSenderMatchLength(mail, list) {
+  return nmtSenderMatch(mail, list).length;
 }
 
 /**
@@ -353,6 +363,19 @@ function nmtIsToMe(row, profile) {
   const p = profile ?? nmtProfile();
   if (!p?.toMe) return null;
   return !!row.querySelector(p.toMe);
+}
+
+/**
+ * 본문에서 나를 멘션했는가. 메일 서비스가 목록에 그 표시를 두지 않으면 null.
+ *
+ * 멘션은 보낸 사람이 나를 골라 부른 것이라 받는 사람 칸보다 분명한 신호다. 받는 사람 칸에
+ * 없이 멘션으로만 부른 메일도 있다. 제목에 요청 표현이 없으면 모델은 이런 메일을
+ * 통지로 읽어 흐리게 두므로, 확률에 맡기지 않고 규칙으로 강조한다.
+ */
+function nmtIsMentioned(row, profile) {
+  const p = profile ?? nmtProfile();
+  if (!p?.mention) return null;
+  return !!row.querySelector(p.mention);
 }
 
 /** 같은 메일을 두 번 판정하지 않도록 안정적인 키를 만든다. */

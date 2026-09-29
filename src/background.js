@@ -20,6 +20,79 @@ importScripts('/src/config.js');
 const NMT_DIRECT = 'https://api.typesafe.ai/v1/systemone';
 
 /**
+ * 본인 키 경로에서 요청 한 번의 시간 제한. 공식 SDK 의 기본값과 같은 10초이고, 본문을 다 받을
+ * 때까지를 잰다. 응답이 오지 않는 요청 하나가 판정 전체를 붙잡지 않게 한다.
+ *
+ * 중계 경로에는 두지 않는다. 중계는 상류를 부르기 전에 하루 한도를 차감하므로, 확장이 기다리다
+ * 끊어도 한도는 이미 쓰였고 판정은 남지 않는다. 느린 구간에 남은 메일을 이어 부르면 결과 없이
+ * 한도만 줄어든다.
+ */
+const NMT_ATTEMPT_TIMEOUT_MS = 10_000;
+
+/**
+ * 본인 키 경로의 재시도 횟수. 첫 시도는 세지 않는다.
+ *
+ * API 는 429(요청 한도)와 529(일시 과부하)에 잠시 기다렸다가 지수 백오프로 다시 보내라고
+ * 한다. 공식 SDK 는 408 과 5xx 도 다시 보낸다. 중계 경로는 다시 보내지 않는다. 중계는
+ * 상류를 부르기 전에 사용자의 하루 한도를 먼저 차감하므로, 확장이 다시 보내면 한도가
+ * 시도 횟수만큼 줄어든다.
+ */
+const NMT_RETRIES = 3;
+
+/** 서버가 이보다 오래 기다리라고 하면 기다리지 않고 받은 응답대로 알린다. 그동안 화면이 멈추기 때문이다 */
+const NMT_MAX_WAIT_MS = 10_000;
+
+const nmtSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** 지수 백오프. 0.5초, 1초, 2초에서 최대 4분의 1을 빼 여러 요청이 한꺼번에 다시 몰리지 않게 한다 */
+function nmtBackoffMs(attempt) {
+  const base = 500 * 2 ** attempt;
+  return base - Math.random() * base * 0.25;
+}
+
+/**
+ * 서버가 기다리라고 한 시간을 밀리초로 읽는다. 없거나 못 읽으면 null.
+ *
+ * 공식 SDK 처럼 retry-after-ms 를 먼저 보고, 없으면 retry-after 를 본다. retry-after 는 초 수와
+ * 날짜 두 형식이 있다.
+ */
+function nmtRetryAfterMs(res) {
+  const ms = Number(res.headers?.get?.('retry-after-ms'));
+  if (res.headers?.get?.('retry-after-ms') && Number.isFinite(ms)) return Math.max(0, ms);
+  const v = res.headers?.get?.('retry-after');
+  if (!v) return null;
+  const sec = Number(v);
+  if (Number.isFinite(sec)) return Math.max(0, sec * 1000);
+  const at = Date.parse(v);
+  return Number.isFinite(at) ? Math.max(0, at - Date.now()) : null;
+}
+
+/** 다시 보내면 결과가 달라질 수 있는 상태인가. 본인 키 경로에서만 쓴다 */
+function nmtRetryable(status) {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+/**
+ * 요청 한 번. timeoutMs 가 있으면 본문을 다 받을 때까지 그 안에 끝나야 하고, 넘기면 AbortError 로 끝난다.
+ *
+ * 머리만 오고 본문이 멈추는 경우도 제한 안에 두려고 본문을 여기서 읽어 새 응답에 담아 돌려준다.
+ */
+async function nmtFetchOnce(url, init, timeoutMs) {
+  if (!timeoutMs) return fetch(url, init);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...init, signal: ctrl.signal });
+    const text = await res.text();
+    // 본문이 없어야 하는 상태에 본문을 담으면 Response 생성자가 예외를 던진다
+    const empty = res.status === 204 || res.status === 205 || res.status === 304;
+    return new Response(empty ? null : text, { status: res.status, statusText: res.statusText, headers: res.headers });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * 설치 직후 설정 화면을 연다.
  *
  * 역할 문장이 없으면 아무것도 판정할 수 없는데, 설치만 하고 끝내면 무엇을 해야
@@ -135,16 +208,32 @@ async function callJev(route, body) {
     headers.Authorization = `Bearer ${apiKey}`;
   }
 
+  const url = relay ? NMT_RELAY_URL : NMT_DIRECT;
+  const init = { method: 'POST', headers, body: JSON.stringify(body) };
+  // 중계 경로는 다시 보내지도, 기다리다 끊지도 않는다. 까닭은 NMT_ATTEMPT_TIMEOUT_MS 설명에 있다
+  const retries = relay ? 0 : NMT_RETRIES;
+  const timeoutMs = relay ? 0 : NMT_ATTEMPT_TIMEOUT_MS;
+
   let res;
-  try {
-    res = await fetch(relay ? NMT_RELAY_URL : NMT_DIRECT, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    });
-  } catch (err) {
-    // 문장을 여기서 만들지 않는다. 화면에 쓰는 쪽이 사용자 언어로 만든다
-    return { errorCode: 'network', detail: String(err?.message ?? err).slice(0, 120) };
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      res = await nmtFetchOnce(url, init, timeoutMs);
+    } catch (err) {
+      // 연결 실패와 시간 초과. 본인 키 경로면 잠시 뒤 다시 보낸다
+      if (attempt < retries) {
+        await nmtSleep(nmtBackoffMs(attempt));
+        continue;
+      }
+      if (err?.name === 'AbortError') return { errorCode: 'timeout' };
+      // 문장을 여기서 만들지 않는다. 화면에 쓰는 쪽이 사용자 언어로 만든다
+      return { errorCode: 'network', detail: String(err?.message ?? err).slice(0, 120) };
+    }
+    if (attempt >= retries || !nmtRetryable(res.status)) break;
+    // 서버가 정한 시간과 백오프 중 긴 쪽을 기다린다. 0 을 주면 곧바로 다시 몰리지 않게 백오프를 쓴다
+    const wait = Math.max(nmtRetryAfterMs(res) ?? 0, nmtBackoffMs(attempt));
+    // 오래 기다리라는 답은 받은 응답대로 알린다. 429 면 아래에서 한도 초과가 된다
+    if (wait > NMT_MAX_WAIT_MS) break;
+    await nmtSleep(wait);
   }
 
   // 중계가 거부한 것과 키가 거부된 것은 사용자가 할 일이 다르다

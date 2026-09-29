@@ -51,6 +51,9 @@
   "errRateLimit": {
     "message": "Rate limit reached. Try again shortly."
   },
+  "errTimeout": {
+    "message": "The judging service answered too slowly, so sorting stopped. Sort again shortly."
+  },
   "errNoAction": {
     "message": "The response has no action field. See the console for its structure."
   },
@@ -108,7 +111,28 @@
     "message": "Your role and current focus"
   },
   "optRoleHint": {
-    "message": "Pick a job and the sentence fills in. Edit it freely. This sentence changes accuracy more than anything else."
+    "message": "Pick a job and the sentence fills in. Edit it freely."
+  },
+  "optRoleOverwrite": {
+    "message": "Replace the sentence you wrote with the example for this job?"
+  },
+  "optGuide": {
+    "message": "What to write where, and what it changes"
+  },
+  "optGuideShow": {
+    "message": "Mail you must see: add the sender or a subject word to Always show. Automated alerts and messages you were only copied on are highlighted too, without asking the model again."
+  },
+  "optGuideMute": {
+    "message": "Mail you never need: add it to Always ignore. It is dimmed without judgement and no call is made."
+  },
+  "optGuideRole": {
+    "message": "Kinds you want less of: name them under Only read in the role sentence. Listing notices can also lower notices that carry a task, such as training you must take, so add a subject word for those to Always show. Changing the role sentence re-judges messages on the next sort."
+  },
+  "optGuideRaise": {
+    "message": "To highlight your own tasks more, Always show is more reliable than the role sentence, which does little to raise a message."
+  },
+  "optGuideAuto": {
+    "message": "Decided without any setting: messages that mention you are highlighted (NAVER WORKS), and messages from no-reply addresses are dimmed without judgement."
   },
   "optRolePick": {
     "message": "Choose a job"
@@ -117,7 +141,7 @@
     "message": "Pick a job above or write your own."
   },
   "optRoleTip": {
-    "message": "The more specific the better. This line is sent with every judgement and decides whether a message needs action from you. For senders you want handled with certainty, use the lists below instead."
+    "message": "This line is sent with every judgement as background. Naming the kinds of mail you only read, such as notices and newsletters, moves them towards being highlighted less. For senders and subject words you must see, the Always show list below is more reliable."
   },
   "optStrength": {
     "message": "Which bothers you more?"
@@ -290,20 +314,76 @@
   "kindPinned": {
     "message": "Always"
   },
+  "kindMention": {
+    "message": "Mentioned"
+  },
   "kindMuted": {
     "message": "Muted"
+  },
+  "tipPinned": {
+    "message": "Matched the line \"$WORD$\" in Always show, so it is highlighted without judgement.",
+    "placeholders": {
+      "word": {
+        "content": "$1"
+      }
+    }
+  },
+  "tipMuted": {
+    "message": "Matched the line \"$WORD$\" in Always ignore, so it is dimmed without judgement.",
+    "placeholders": {
+      "word": {
+        "content": "$1"
+      }
+    }
+  },
+  "tipSent": {
+    "message": "Recognised as sent by you, so it is dimmed without judgement. If that is wrong, check your name and address in settings."
+  },
+  "tipMention": {
+    "message": "You are mentioned, so it is highlighted without judgement. To dim it, add the sender or a subject word to Always ignore."
+  },
+  "tipNoReply": {
+    "message": "From a no-reply address, so it is dimmed without judgement. If you must see these alerts, add the sender or a subject word to Always show."
+  },
+  "optHintTitle": {
+    "message": "Suggested Always show words for $JOB$. Read the reasons and add only what you want.",
+    "placeholders": {
+      "job": {
+        "content": "$1"
+      }
+    }
+  },
+  "optHintNote": {
+    "message": "These are examples picked for the job and may not fit your inbox. Case does not matter but spacing does. Replies (RE:) from others are also highlighted when the subject contains the word; messages you sent are not. Adding saves all your settings as the Save button does, and the next sort applies it."
+  },
+  "optHintAdd": {
+    "message": "Add"
+  },
+  "optHintAdded": {
+    "message": "Added"
+  },
+  "optHintMuted": {
+    "message": "In Always ignore"
+  },
+  "optHintSaved": {
+    "message": "Added \"$WORD$\" to Always show and saved your settings.",
+    "placeholders": {
+      "word": {
+        "content": "$1"
+      }
+    }
   },
   "optAlwaysShow": {
     "message": "Always show"
   },
   "optAlwaysShowHint": {
-    "message": "Senders or subjects listed here are highlighted even when automated. One per line, a fragment is enough."
+    "message": "Messages whose sender or subject contains a line here are highlighted before any judgement, including automated alerts and messages you were only copied on, but not messages you sent. One per line, a fragment is enough."
   },
   "optAlwaysMute": {
     "message": "Always ignore"
   },
   "optAlwaysMuteHint": {
-    "message": "Senders or subjects listed here are skipped without being judged. No calls are made."
+    "message": "Messages whose sender or subject contains a line here are dimmed without being judged. No calls are made, and this applies even when you are mentioned."
   },
   "optSenderPlaceholder": {
     "message": "ceo@example.com\n@partner.com\nwebinar"

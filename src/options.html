@@ -86,6 +86,18 @@
   }
   button.ghost { background: #eef0f2; color: #374151; padding: 6px 12px; font-size: 13px; }
   #saved { margin-left: 10px; font-size: 13px; }
+  .guide-list { margin: 4px 0 14px 18px; padding: 0; color: #4b5563; font-size: 13px; line-height: 1.6; }
+  .guide-list li { margin: 4px 0; }
+
+  /* 고른 직군의 추천 단어. 누른 것만 항상 확인 칸에 들어간다 */
+  .job-hints { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: #f6f8fa; }
+  .job-hints .hint { margin-top: 0; }
+  .job-hints ul { list-style: none; margin: 8px 0; padding: 0; font-size: 13px; }
+  .job-hints li { margin: 6px 0; line-height: 1.5; }
+  .job-hints li button { padding: 2px 10px; font-size: 12px; margin-right: 8px; }
+  .job-hints li button:disabled { opacity: 0.55; cursor: default; }
+  .job-hints code { font-weight: 600; margin-right: 6px; }
+  .job-hints .why { color: #6b7280; }
 </style>
 </head>
 <body>
@@ -151,12 +163,28 @@
     <span class="hint" data-i18n="optAlwaysShowHint"></span>
   </label>
   <textarea id="alwaysShow" data-i18n-placeholder="optSenderPlaceholder"></textarea>
+  <div class="job-hints" id="jobHints" hidden>
+    <span class="hint" id="jobHintsTitle"></span>
+    <ul id="jobHintsList"></ul>
+    <span class="hint" data-i18n="optHintNote"></span>
+  </div>
 
   <label class="main" for="alwaysMute" style="margin-top:18px"><span class="no">5</span><span data-i18n="optAlwaysMute"></span>
     <span class="hint" data-i18n="optAlwaysMuteHint"></span>
   </label>
   <textarea id="alwaysMute" data-i18n-placeholder="optSenderPlaceholder"></textarea>
 </div>
+
+<details>
+  <summary data-i18n="optGuide"></summary>
+  <ul class="guide-list">
+    <li data-i18n="optGuideShow"></li>
+    <li data-i18n="optGuideMute"></li>
+    <li data-i18n="optGuideRole"></li>
+    <li data-i18n="optGuideRaise"></li>
+    <li data-i18n="optGuideAuto"></li>
+  </ul>
+</details>
 
 <details>
   <summary data-i18n="optTrouble"></summary>

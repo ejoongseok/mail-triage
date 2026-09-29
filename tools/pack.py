@@ -7,7 +7,11 @@
 압축 전에 검사기를 돌리고, 만든 압축 안을 다시 훑어 자격 증명이 없는지 본다. 만들
 때의 상태와 압축된 내용이 다를 수 있으므로 양쪽을 모두 본다.
 
+압축은 공개 직전 관문이라 로컬 금지어 목록(검사기 설명 참고)이 없으면 멈추고, 커밋 기록도
+그 목록으로 훑는다. 목록 없이 만들어야 하면(다른 사람이 자기 기기에서 만들 때) --no-denylist 를 준다.
+
     python tools/pack.py
+    python tools/pack.py --no-denylist
 """
 import io
 import os
@@ -40,6 +44,33 @@ SECRETS = [
 
 # 아이콘 원본과 스토어 이미지는 확장이 쓰지 않는다
 SKIP_NAMES = ('_preview_small.png', 'tile440x280.png')
+
+NO_DENYLIST = '--no-denylist' in sys.argv[1:]
+
+# 검사기와 같은 로컬 금지어 목록. 목록 자체가 유출이라 저장소 밖에 두고, 결과에는 줄 번호만 적는다
+DENY_FILE = os.environ.get('NMT_DENYLIST') or os.path.join(os.path.expanduser('~'), '.mail-triage-denylist.txt')
+
+
+def denylist():
+    if NO_DENYLIST or not os.path.isfile(DENY_FILE):
+        return []
+    out = []
+    for no, line in enumerate(io.open(DENY_FILE, encoding='utf-8-sig'), 1):
+        word = line.strip()
+        if word and not word.startswith('#'):
+            out.append((no, word.lower()))
+    return out
+
+
+def squash(s):
+    return re.sub(r'[\s._-]+', '', s)
+
+
+def deny_hits(text, deny):
+    """검사기의 deny_hits 와 같은 규칙. 네 글자 이상은 띄어쓰기와 구두점을 지우고도 본다"""
+    low = text.lower()
+    flat = squash(low)
+    return [no for no, word in deny if word in low or (len(squash(word)) >= 4 and squash(word) in flat)]
 
 
 def collect():
@@ -78,6 +109,16 @@ def history_leaks():
     for pattern, label in SECRETS:
         if re.search(pattern, log.stdout or ''):
             found.append('커밋 기록에 %s 가 있다. 파일에서 지워도 기록에는 남는다' % label)
+    # 금지어는 커밋 메시지와 바뀐 내용만 본다. 작성자 이름과 주소는 커밋마다 되풀이되고, 공개할
+    # 때 기록을 그대로 올릴지 새로 만들지에 달린 문제라 이 검사가 막을 일이 아니다
+    deny = denylist()
+    if deny:
+        body = subprocess.run(['git', 'log', '-p', '--all', '--format=%B'], capture_output=True,
+                              encoding='utf-8', errors='ignore')
+        if body.returncode != 0:
+            return found + ['커밋 기록을 읽지 못해 금지어를 검사하지 못했다']
+        for no in deny_hits(body.stdout or '', deny):
+            found.append('커밋 기록에 로컬 금지어 목록 %d번째 줄이 있다. 파일에서 지워도 기록에는 남는다' % no)
     return found
 
 
@@ -89,8 +130,8 @@ def main():
         print('커밋 기록에 나가면 안 되는 것이 있어 압축하지 않는다.')
         sys.exit(1)
 
-    check = subprocess.run([sys.executable, 'tools/check.py'], capture_output=True, text=True,
-                           encoding='utf-8')
+    check_args = [sys.executable, 'tools/check.py'] + ([] if NO_DENYLIST else ['--require-denylist'])
+    check = subprocess.run(check_args, capture_output=True, text=True, encoding='utf-8')
     if check.returncode != 0:
         print(check.stdout)
         print('검사기가 통과하지 않아 압축하지 않는다.')
@@ -115,6 +156,8 @@ def main():
             for pattern, label in SECRETS:
                 if re.search(pattern, body):
                     problems.append('%s: %s' % (info.filename, label))
+            for no in deny_hits(body, denylist()):
+                problems.append('%s: 로컬 금지어 목록 %d번째 줄' % (info.filename, no))
 
     if problems:
         os.remove(name)

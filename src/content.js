@@ -88,6 +88,34 @@ function nmtIsFromMe(sender, myIdentity) {
     .some((mine) => s.includes(mine) || mine.includes(s));
 }
 
+/**
+ * 모델에 묻기 전에 규칙으로 정해지는 판정. 규칙에 걸리지 않으면 null 이고, 그때만 모델에 묻는다.
+ *
+ * 순서가 곧 규칙이다. 앞에서 정해지면 뒤는 보지 않는다.
+ *   1) 본인이 보낸 메일. 내가 보낸 메일은 내가 처리할 일이 아니다. 제목에 목록 단어가 있거나
+ *      멘션 표시가 붙어도 그렇다. 목록보다 뒤에 두면 받은 메일과 보낸 메일이 섞인 목록에서
+ *      내가 보낸 요청이 목록 단어에 걸려 강조된다. 잘못 알아보면 설정의 이름과 주소로 고친다
+ *   2) 사용자가 정한 항상 확인과 항상 무시. 확실히 아는 것은 판정에 맡기지 않는다
+ *   3) 나를 멘션한 메일. 보낸 사람이 나를 골라 부른 것이라 확률에 맡기지 않는다.
+ *      회신 불가 주소보다 앞서므로 서비스가 멘션을 알리는 자동 메일도 강조된다
+ *   4) 회신 불가 주소. 사람이 보낸 것이 아니다
+ * 목록 다시 그리기와 분류하기가 이 함수 하나를 써야 두 경로의 표시가 어긋나지 않는다.
+ *
+ * rule 에 어느 규칙인지를 남긴다. 모델도 system 과 sent 를 답하므로 kind 만으로는 규칙인지
+ * 모델인지 가를 수 없다. 목록 규칙이면 word 에 걸린 줄을 남긴다.
+ */
+function nmtRuleVerdict(row, mail, settings, profile, identity) {
+  const by = (rule, action, kind, word = '') => ({ action, kind, kindConfidence: 1, deadline: 0, rule, word });
+
+  if (nmtIsFromMe(mail.sender, identity) || nmtIsFromMe(mail.email, identity)) return by('sent', 0, 'sent');
+  const list = nmtSenderRule(mail, settings.alwaysShow, settings.alwaysMute);
+  if (list === 'show') return by('show', 1, 'pinned', nmtSenderMatch(mail, settings.alwaysShow));
+  if (list === 'mute') return by('mute', 0, 'muted', nmtSenderMatch(mail, settings.alwaysMute));
+  if (nmtIsMentioned(row, profile)) return by('mention', 1, 'mention');
+  if (nmtIsNoReply(mail.email)) return by('noreply', 0, 'system');
+  return null;
+}
+
 async function nmtSettings() {
   try {
     return { ...NMT_DEFAULTS, ...(await chrome.storage.sync.get(NMT_DEFAULTS)) };
@@ -473,7 +501,8 @@ function nmtWatchOpens() {
 
 /* 불변식 ----------------------------------------------------------------- */
 
-const NMT_ACTION_KINDS = new Set(['reply', 'task', 'approval', 'schedule']);
+// 규칙으로 강조하는 항상 확인과 멘션 배지도 강조된 행에만 붙는다. test/browser/audit.js 와 같은 집합이다
+const NMT_ACTION_KINDS = new Set(['reply', 'task', 'approval', 'schedule', 'pinned', 'mention']);
 
 let nmtCheckTimer = null;
 
@@ -621,25 +650,13 @@ async function nmtRepaint() {
     }
 
     mail.email = nmtSenderEmail(row);
-    const rule = nmtSenderRule(mail, settings.alwaysShow, settings.alwaysMute);
-    if (rule === 'show') {
-      nmtMark(row, { action: 1, kind: 'pinned', kindConfidence: 1, deadline: 0 }, settings, profile, mailKey);
-      continue;
-    }
-    if (rule === 'mute') {
-      nmtMark(row, { action: 0, kind: 'muted', kindConfidence: 1, deadline: 0 }, settings, profile, mailKey);
-      continue;
-    }
-    if (nmtIsNoReply(mail.email)) {
-      nmtMark(row, { action: 0, kind: 'system', kindConfidence: 1, deadline: 0 }, settings, profile, mailKey);
-      continue;
-    }
-    if (nmtIsFromMe(mail.sender, identity) || nmtIsFromMe(mail.email, identity)) {
-      nmtMark(row, { action: 0, kind: 'sent', kindConfidence: 1, deadline: 0 }, settings, profile, mailKey);
+    const ruled = nmtRuleVerdict(row, mail, settings, profile, identity);
+    if (ruled) {
+      nmtMark(row, ruled, settings, profile, mailKey);
       continue;
     }
 
-    const hit = await nmtCacheGet(nmtVerdictKey(mailKey, settings.persona));
+    const hit = await nmtCacheGet(nmtVerdictKey(mailKey, settings.persona, settings.myIdentity));
     if (!nmtStill(row, mailKey, profile)) continue;
     if (!hit || hit.error) {
       // 판정한 적이 없는 메일이다. 호출하지 않고 세어만 둔다
@@ -691,8 +708,7 @@ async function nmtRun() {
 
   const settings = await nmtSettings();
 
-  // 키와 역할은 둘 다 있어야 한다. 역할이 없으면 모델은 "일반적으로 중요해 보이는 메일"을
-  // 고르는데, 그것은 받는 사람이 누구든 같은 답이라 이 확장을 쓸 이유가 없어진다.
+  // 역할은 있어야 한다. 읽기만 할 메일의 종류를 모델에 알리는 자리가 역할 문장이다.
   // 키가 없으면 중계로 가고, 중계도 없으면 background 가 needKey 로 알려 준다
   const missing = [];
   if (!settings.persona || settings.persona.length < 5) missing.push(nmtMsg('needPersona'));
@@ -729,11 +745,9 @@ async function nmtRun() {
   nmtWatchList();
 
   const jobs = [];
-  let skippedSent = 0;
-  let skippedAuto = 0;
   let skippedDone = 0;
-  let pinned = 0;
-  let muted = 0;
+  // 규칙으로 정해진 건수. 키는 판정 종류(pinned, muted, sent, mention, system)다
+  const ruledCount = {};
 
   for (const row of rows) {
     const mail = nmtExtract(row, profile);
@@ -754,35 +768,16 @@ async function nmtRun() {
 
     mail.email = nmtSenderEmail(row);
 
-    // 사용자가 직접 정한 것이 먼저다. 자동 발송 주소라도 반드시 봐야 하는 알림이 있다
-    const rule = nmtSenderRule(mail, settings.alwaysShow, settings.alwaysMute);
-    if (rule === 'show') {
-      nmtMark(row, { action: 1, kind: 'pinned', kindConfidence: 1, deadline: 0 }, settings, profile, mailKey);
-      pinned += 1;
-      continue;
-    }
-    if (rule === 'mute') {
-      nmtMark(row, { action: 0, kind: 'muted', kindConfidence: 1, deadline: 0 }, settings, profile, mailKey);
-      muted += 1;
+    // 규칙으로 정해지는 메일은 호출하지 않는다. 사용자가 직접 정한 것이 먼저다
+    const ruled = nmtRuleVerdict(row, mail, settings, profile, identity);
+    if (ruled) {
+      nmtMark(row, ruled, settings, profile, mailKey);
+      ruledCount[ruled.kind] = (ruledCount[ruled.kind] ?? 0) + 1;
       continue;
     }
 
-    // 회신 불가 주소는 사람이 보낸 것이 아니다. 호출 없이 판정한다
-    if (nmtIsNoReply(mail.email)) {
-      nmtMark(row, { action: 0, kind: 'system', kindConfidence: 1, deadline: 0 }, settings, profile, mailKey);
-      skippedAuto += 1;
-      continue;
-    }
-
-    // 본인이 보낸 메일은 호출 없이 표시만 한다
-    if (nmtIsFromMe(mail.sender, identity) || nmtIsFromMe(mail.email, identity)) {
-      nmtMark(row, { action: 0, kind: 'sent', kindConfidence: 1, deadline: 0 }, settings, profile, mailKey);
-      skippedSent += 1;
-      continue;
-    }
-
-    // 캐시 키에 역할 해시를 섞는다. 역할을 바꾸면 판정이 달라져야 하므로 옛 결과를 쓰면 안 된다
-    jobs.push({ row, mail, mailKey, key: nmtVerdictKey(mailKey, settings.persona) });
+    // 캐시 키에 판정 입력으로 보내는 설정을 섞는다. 바꾸면 판정이 달라져야 하므로 옛 결과를 쓰면 안 된다
+    jobs.push({ row, mail, mailKey, key: nmtVerdictKey(mailKey, settings.persona, settings.myIdentity) });
 
     if (jobs.length >= NMT_MAX_PER_RUN) break;
   }
@@ -838,7 +833,8 @@ async function nmtRun() {
       if (verdict.error) {
         failed += 1;
         if (!firstError) firstError = verdict.error;
-        // 인증 실패나 한도 초과는 남은 건을 호출해도 같은 결과이므로 중단한다
+        // 인증 실패는 남은 건을 호출해도 같은 결과다. 한도 초과와 시간 초과는 background 가
+        // 기다렸다가 다시 보낸 뒤에도 남은 것이라 이어 부르면 같은 답을 받는다. 모두 중단한다
         if (verdict.fatal) queue.length = 0;
       } else {
         tokens += verdict.tokens ?? 0;
@@ -864,11 +860,12 @@ async function nmtRun() {
     judged: done,
     calls: called,
     cached,
-    skippedAuto,
-    skippedSent,
+    skippedAuto: ruledCount.system ?? 0,
+    skippedSent: ruledCount.sent ?? 0,
     skippedDone,
-    pinned,
-    muted,
+    pinned: ruledCount.pinned ?? 0,
+    muted: ruledCount.muted ?? 0,
+    mentioned: ruledCount.mention ?? 0,
     actionable: nmtActionable(),
     // actionable 은 행동 필요 확률이 문턱을 넘은 수이고 kinds 는 유형 분포다.
     // 두 질문이 독립이라 "답장 필요" 유형인데 행동 확률이 낮은 건이 나올 수 있다
@@ -921,17 +918,19 @@ function nmtBadgeKind(kind, needsAction) {
  * 받는 사람 칸에 내가 없고 멘션되지도 않은 메일은 문턱을 넘어도 강조하지 않는다. 참조와
  * 숨은 참조와 단체 주소로 받은 메일의 요청은 대개 받는 사람 칸의 사람 몫이다. 그 사실을
  * 판정 입력에 적어 주는 것으로는 확률이 거의 내려가지 않아 규칙으로 가른다. 사용자가 직접
- * 정한 항상 확인은 이 규칙보다 앞서고, toMe 가 null 이면(표시가 없는 서비스) 가르지 않는다.
+ * 정한 항상 확인과 나를 멘션한 메일은 이 규칙보다 앞서고, toMe 가 null 이면(표시가 없는
+ * 서비스) 가르지 않는다.
  */
 function nmtDecide(v, threshold, toMe) {
   const over = v.action >= threshold;
-  const cc = over && v.kind !== 'pinned' && toMe === false;
+  const cc = over && v.kind !== 'pinned' && v.kind !== 'mention' && toMe === false;
   const needsAction = over && !cc;
   return { needsAction, shown: cc ? 'cc' : nmtBadgeKind(v.kind, needsAction) };
 }
 
 const NMT_LABEL_KEYS = {
   pinned: 'kindPinned',
+  mention: 'kindMention',
   muted: 'kindMuted',
   reply: 'kindReply',
   task: 'kindTask',
@@ -967,6 +966,30 @@ function nmtBadgeSlot(row, profile) {
   return { parent: title.parentElement ?? row, before: title };
 }
 
+/**
+ * 배지 툴팁. 규칙으로 정해진 행은 확률 대신 어느 규칙에 걸렸는지를 적는다.
+ *
+ * 규칙 판정에 확률을 적으면 모델이 100% 확신한 것처럼 읽히고, 사용자는 무엇을 고쳐야
+ * 표시가 바뀌는지 알 수 없다. 목록 규칙이면 걸린 줄까지 적어 그 줄을 찾아 고치게 한다.
+ */
+function nmtBadgeTitle(v, shown) {
+  switch (v.rule) {
+    case 'show':
+      return nmtMsg('tipPinned', v.word);
+    case 'mute':
+      return nmtMsg('tipMuted', v.word);
+    case 'sent':
+      return nmtMsg('tipSent');
+    case 'mention':
+      return nmtMsg('tipMention');
+    case 'noreply':
+      return nmtMsg('tipNoReply');
+  }
+  // 강등된 경우 원래 분류를 툴팁에 남긴다. 화면에서 지웠다고 사실까지 버리지는 않는다
+  const raw = shown === v.kind ? '' : nmtMsg('badgeRaw', nmtMsg(NMT_LABEL_KEYS[v.kind] ?? 'kindOther'));
+  return nmtMsg('badgeTip', (v.action * 100).toFixed(0), (v.kindConfidence * 100).toFixed(0)) + raw;
+}
+
 function nmtMark(row, v, settings, profile, mailKey) {
   nmtClearRowState(row);
   row.querySelector('.nmt-badge')?.remove();
@@ -986,10 +1009,7 @@ function nmtMark(row, v, settings, profile, mailKey) {
   // 읽음 여부는 판정에 넣지 않는다. 화면에 사실로만 적는다
   if (nmtIsUnread(row, profile) === false) badge.textContent += ' (' + nmtMsg('badgeRead') + ')';
 
-  // 강등된 경우 원래 분류를 툴팁에 남긴다. 화면에서 지웠다고 사실까지 버리지는 않는다
-  const raw = shown === v.kind ? '' : nmtMsg('badgeRaw', nmtMsg(NMT_LABEL_KEYS[v.kind] ?? 'kindOther'));
-  badge.title =
-    nmtMsg('badgeTip', (v.action * 100).toFixed(0), (v.kindConfidence * 100).toFixed(0)) + raw;
+  badge.title = nmtBadgeTitle(v, shown);
 
   // 강조된 행에 건다. 흐린 행과 자동발송은 애초에 확인 목록에 없어 내릴 것이 없고,
   // 띠 색에 따라 되고 안 되면 사용자가 규칙을 예측할 수 없다
